@@ -1,0 +1,38 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python*)",
+      "Bash(pip*)",
+      "Bash(psql*)",
+      "Bash(mongosh*)",
+      "Bash(redis-cli*)",
+      "Bash(find:*)",
+      "Bash(cat:*)",
+      "Bash(ls:*)",
+      "Bash(mkdir:*)",
+      "Bash(cp:*)",
+      "Bash(mv:*)",
+      "Bash(echo:*)",
+      "Bash(touch:*)",
+      "Bash(grep:*)",
+      "Bash(sed:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(wc:*)",
+      "Read(**)",
+      "Write(sql/**)",
+      "Write(etl/**)",
+      "Write(nosql/**)",
+      "Write(dashboard/**)",
+      "Write(tests/**)",
+      "Write(docs/**)",
+      "Write(.env.example)"
+    ],
+    "deny": [
+      "Bash(rm -rf*)",
+      "Bash(DROP DATABASE*)",
+      "Bash(curl*)",
+      "Write(.env)"
+    ]
+  }
+}

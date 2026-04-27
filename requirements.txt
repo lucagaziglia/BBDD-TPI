@@ -1,0 +1,26 @@
+# Datawarehouse / PostgreSQL
+psycopg2-binary==2.9.9
+supabase==2.4.0
+sqlalchemy==2.0.25
+
+# MongoDB
+pymongo==4.6.1
+motor==3.3.2  # async si se necesita
+
+# Redis
+redis==5.0.1
+
+# ETL y transformaciones
+pandas==2.2.0
+numpy==1.26.4
+
+# Datos sintéticos
+faker==22.6.0
+
+# Utilidades
+python-dotenv==1.0.1
+tqdm==4.66.2  # progress bars en seeds
+
+# Tests
+pytest==8.0.0
+pytest-cov==4.1.0
