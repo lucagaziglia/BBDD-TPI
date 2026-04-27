@@ -1,0 +1,300 @@
+# /setup_nosql — Seeds de MongoDB + Redis y pipeline end-to-end
+
+Creá los scripts de seeds para MongoDB y Redis, y verificá que el pipeline
+corra end-to-end con credenciales reales.
+
+No preguntes nada. Creá todos los archivos y corré el pipeline al final.
+
+---
+
+## Paso 1 — Crear `nosql/mongodb/seed_sensors.py`
+
+Creá este archivo completo:
+
+```python
+"""
+Seed de MongoDB Atlas — sensor_readings
+
+Inserta documentos de lecturas de sensores IoT para todos los lotes
+del DW de AgroPampa S.A. Una lectura cada 15 minutos durante 7 días.
+
+Uso:
+    python nosql/mongodb/seed_sensors.py
+
+Requiere en .env:
+    MONGODB_URI=mongodb+srv://user:pass@cluster.mongodb.net/agtech_sensors
+"""
+import os
+import sys
+import random
+import logging
+from datetime import datetime, timedelta
+from pymongo import MongoClient
+from dotenv import load_dotenv
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+load_dotenv()
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+logger = logging.getLogger(__name__)
+
+# Parámetros base por tipo de suelo (igual que los seeds SQL)
+HUMEDAD_BASE = {
+    "franco":            67.0,
+    "franco-limoso":     66.0,
+    "franco-arcilloso":  64.0,
+    "arcilloso":         62.0,
+    "arenoso":           54.0,
+}
+
+# Lotes reales del DW (id, nombre, tipo_suelo)
+LOTES = [
+    (1,  "Lote 1 - La Esperanza",  "franco"),
+    (2,  "Lote 2 - La Esperanza",  "franco-arcilloso"),
+    (3,  "Lote 3 - La Esperanza",  "arcilloso"),
+    (4,  "Lote 1 - Norte Junín",   "franco"),
+    (5,  "Lote 2 - Norte Junín",   "franco-limoso"),
+    (6,  "Lote 1 - Tres Marías",   "franco"),
+    (7,  "Lote 2 - Tres Marías",   "arcilloso"),
+    (8,  "Lote 3 - Tres Marías",   "franco-arcilloso"),
+    (9,  "Lote 1 - La Rinconada",  "franco"),
+    (10, "Lote 2 - La Rinconada",  "franco-limoso"),
+    (11, "Lote 3 - La Rinconada",  "arenoso"),
+    (12, "Lote 1 - Del Paraná",    "franco"),
+    (13, "Lote 2 - Del Paraná",    "arcilloso"),
+]
+
+
+def generar_lecturas(lote_id: int, tipo_suelo: str, dias: int = 7) -> list[dict]:
+    """
+    Genera lecturas sintéticas realistas para un lote.
+    Una lectura cada 15 minutos → 96 lecturas por día por lote.
+    """
+    docs = []
+    humedad_base = HUMEDAD_BASE.get(tipo_suelo, 62.0)
+    ahora = datetime.utcnow()
+    inicio = ahora - timedelta(days=dias)
+    ts = inicio
+
+    while ts <= ahora:
+        # Variación sinusoidal por hora del día (más frío de madrugada)
+        hora = ts.hour
+        variacion_temp = 8.0 * (hora - 6) / 18 if 6 <= hora <= 18 else -4.0
+
+        docs.append({
+            "lote_id":      lote_id,
+            "tipo_suelo":   tipo_suelo,
+            "timestamp":    ts,
+            "tipo_lectura": "HUMEDAD_SUELO",
+            "valor":        round(humedad_base + random.gauss(0, 3.5), 2),
+            "unidad":       "%",
+        })
+        docs.append({
+            "lote_id":      lote_id,
+            "tipo_suelo":   tipo_suelo,
+            "timestamp":    ts,
+            "tipo_lectura": "TEMPERATURA",
+            "valor":        round(18.0 + variacion_temp + random.gauss(0, 1.2), 2),
+            "unidad":       "°C",
+        })
+        ts += timedelta(minutes=15)
+
+    return docs
+
+
+def run_seed():
+    uri = os.getenv("MONGODB_URI")
+    if not uri:
+        logger.error("MONGODB_URI no configurada en .env. Abortando.")
+        sys.exit(1)
+
+    client = MongoClient(uri, serverSelectionTimeoutMS=5000)
+    db = client["agtech_sensors"]
+    col = db["sensor_readings"]
+
+    # Índices para queries eficientes
+    col.create_index([("lote_id", 1), ("timestamp", -1)])
+    col.create_index([("timestamp", -1)])
+    logger.info("Índices creados en sensor_readings.")
+
+    total = 0
+    for lote_id, nombre, tipo_suelo in LOTES:
+        docs = generar_lecturas(lote_id, tipo_suelo, dias=7)
+        col.insert_many(docs)
+        total += len(docs)
+        logger.info(f"  {nombre} ({tipo_suelo}): {len(docs)} documentos insertados.")
+
+    logger.info(f"Seed MongoDB completado: {total} documentos totales.")
+    logger.info(f"Colección: agtech_sensors.sensor_readings")
+    client.close()
+
+
+if __name__ == "__main__":
+    run_seed()
+```
+
+---
+
+## Paso 2 — Crear `nosql/redis/seed_realtime.py`
+
+Creá este archivo completo:
+
+```python
+"""
+Seed de Redis Cloud — estado en tiempo real
+
+Setea el último estado conocido de cada sensor y el estado
+del sistema de riego para todos los lotes.
+
+Uso:
+    python nosql/redis/seed_realtime.py
+
+Requiere en .env:
+    REDIS_URL=redis://default:pass@host:port
+"""
+import os
+import sys
+import random
+import logging
+import redis
+from dotenv import load_dotenv
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+load_dotenv()
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+logger = logging.getLogger(__name__)
+
+# Mismo set de lotes que MongoDB
+LOTES = [
+    (1,  "Lote 1 - La Esperanza",  "franco",            67.0),
+    (2,  "Lote 2 - La Esperanza",  "franco-arcilloso",  64.0),
+    (3,  "Lote 3 - La Esperanza",  "arcilloso",         62.0),
+    (4,  "Lote 1 - Norte Junín",   "franco",            67.0),
+    (5,  "Lote 2 - Norte Junín",   "franco-limoso",     66.0),
+    (6,  "Lote 1 - Tres Marías",   "franco",            67.0),
+    (7,  "Lote 2 - Tres Marías",   "arcilloso",         62.0),
+    (8,  "Lote 3 - Tres Marías",   "franco-arcilloso",  64.0),
+    (9,  "Lote 1 - La Rinconada",  "franco",            67.0),
+    (10, "Lote 2 - La Rinconada",  "franco-limoso",     66.0),
+    (11, "Lote 3 - La Rinconada",  "arenoso",           54.0),
+    (12, "Lote 1 - Del Paraná",    "franco",            67.0),
+    (13, "Lote 2 - Del Paraná",    "arcilloso",         62.0),
+]
+
+# Umbral: si humedad < 45% activa riego automáticamente
+UMBRAL_RIEGO = 45.0
+
+
+def run_seed():
+    url = os.getenv("REDIS_URL")
+    if not url:
+        logger.error("REDIS_URL no configurada en .env. Abortando.")
+        sys.exit(1)
+
+    r = redis.Redis.from_url(url, decode_responses=True)
+
+    # Verificar conexión
+    r.ping()
+    logger.info("Conexión a Redis Cloud exitosa.")
+
+    total_keys = 0
+    for lote_id, nombre, tipo_suelo, humedad_base in LOTES:
+        humedad  = round(humedad_base + random.gauss(0, 4.0), 2)
+        temp     = round(18.0 + random.gauss(0, 2.5), 2)
+        # Riego ON si humedad baja del umbral
+        estado_riego = "ON" if humedad < UMBRAL_RIEGO else "OFF"
+
+        # SET con expiración de 1 hora (los sensores actualizan c/15min)
+        ttl = 3600
+        r.set(f"sensor:{lote_id}:humedad",     humedad,  ex=ttl)
+        r.set(f"sensor:{lote_id}:temperatura", temp,     ex=ttl)
+        r.set(f"riego:{lote_id}:estado",       estado_riego, ex=ttl)
+
+        total_keys += 3
+        estado_str = "RIEGO ON" if estado_riego == "ON" else "riego off"
+        logger.info(f"  {nombre}: humedad={humedad}% temp={temp}°C → {estado_str}")
+
+    logger.info(f"Seed Redis completado: {total_keys} keys seteadas.")
+    logger.info("Estructura: sensor:{{id}}:humedad | sensor:{{id}}:temperatura | riego:{{id}}:estado")
+
+
+if __name__ == "__main__":
+    run_seed()
+```
+
+---
+
+## Paso 3 — Verificar el `.env`
+
+Verificá que el archivo `.env` en la raíz del repo tiene estas 3 variables completas
+(sin esto los seeds fallan):
+
+```
+MONGODB_URI=mongodb+srv://agtech_user:TU_PASSWORD@cluster0.xxxxx.mongodb.net/agtech_sensors
+REDIS_URL=redis://default:TU_PASSWORD@redis-xxxxx.region.ec2.cloud.redislabs.com:PORT
+SUPABASE_DB_URL=postgresql://postgres:TU_PASSWORD@db.ldfnnrehlehzrdnossre.supabase.co:5432/postgres
+```
+
+Si alguna falta, avisale al usuario antes de continuar.
+
+---
+
+## Paso 4 — Correr los seeds
+
+En la terminal, desde la raíz del repo:
+
+```bash
+# Seed MongoDB (inserta ~17.000 documentos — 13 lotes × 96 lecturas/día × 7 días × 2 tipos)
+python nosql/mongodb/seed_sensors.py
+
+# Seed Redis (setea 39 keys — 13 lotes × 3 keys)
+python nosql/redis/seed_realtime.py
+```
+
+---
+
+## Paso 5 — Correr el pipeline end-to-end
+
+```bash
+python etl/pipeline.py
+```
+
+Resultado esperado en terminal:
+```
+PASO 1/3 — Extract
+MongoDB: ~17000 documentos | Redis: 39 keys
+PASO 2/3 — Transform
+Transformación completa: ~91 filas resultantes (13 lotes × 7 días)
+PASO 3/3 — Load
+Carga completada: 91 filas en dim_clima
+Pipeline completado en X.Xs
+```
+
+---
+
+## Paso 6 — Verificar en Supabase
+
+Corré esta query en el SQL Editor de Supabase para confirmar que dim_clima
+recibió los datos:
+
+```sql
+SELECT
+    lo.nombre AS localidad,
+    cl.fecha,
+    ROUND(cl.temp_promedio::numeric, 1)    AS temp,
+    ROUND(cl.humedad_promedio::numeric, 1) AS humedad,
+    cl.precipitacion_mm
+FROM dim_clima cl
+JOIN dim_localidad lo ON lo.id = cl.localidad_id
+ORDER BY cl.fecha DESC, lo.nombre
+LIMIT 20;
+```
+
+Si devuelve filas, el pipeline end-to-end funcionó correctamente.
+
+---
+
+## Si algo falla
+
+- **MongoDB connection error**: verificar que en Atlas → Network Access → IP esté en 0.0.0.0/0
+- **Redis connection error**: verificar que el REDIS_URL tenga el puerto correcto
+- **psycopg2 error en Load**: verificar que SUPABASE_DB_URL sea el "Connection string" directo de Supabase (Settings → Database → Connection string → URI)

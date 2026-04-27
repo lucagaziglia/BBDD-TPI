@@ -1,0 +1,19 @@
+# Credenciales y variables de entorno (¡MUY IMPORTANTE!)
+.env
+
+# Archivos de macOS
+.DS_Store
+
+# Archivos generados por Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Entornos virtuales de Python
+venv/
+env/
+.venv/
+
+# Bases de datos locales
+*.sqlite3
