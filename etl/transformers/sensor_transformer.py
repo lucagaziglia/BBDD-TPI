@@ -75,6 +75,11 @@ def transform_readings(
 
     logger.info(f"Outliers eliminados: {filas_antes - len(df)} registros.")
 
+    # Guard: si todos los datos fueron filtrados, retornar DF vacío
+    if df.empty:
+        logger.warning("Sin datos válidos tras el filtrado de outliers. Retornando DF vacío.")
+        return pd.DataFrame()
+
     # 3. Mapear lote_id → localidad_id
     if lote_localidad_map:
         df["localidad_id"] = df["lote_id"].map(lote_localidad_map)

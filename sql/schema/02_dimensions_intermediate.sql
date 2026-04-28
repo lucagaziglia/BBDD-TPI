@@ -15,6 +15,8 @@ CREATE TABLE IF NOT EXISTS dim_localidad (
 COMMENT ON TABLE dim_localidad IS
   'Intermedia geográfica. 3FN: nombre_provincia no se repite acá.';
 
+-- ────────────────────────────────────────────────────────────
+
 CREATE TABLE IF NOT EXISTS dim_campo (
     id                  SERIAL       PRIMARY KEY,
     propietario_id      INT          NOT NULL,
@@ -29,7 +31,9 @@ CREATE TABLE IF NOT EXISTS dim_campo (
         FOREIGN KEY (localidad_id)   REFERENCES dim_localidad(id)
 );
 COMMENT ON TABLE dim_campo IS
-  'Nodo intermedio snowflake: conecta propietario y localidad sin repetir ninguno.';
+  'Nodo intermedio snowflake: conecta propietario y localidad.';
+
+-- ────────────────────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS dim_cultivo (
     id               SERIAL       PRIMARY KEY,
@@ -43,7 +47,9 @@ CREATE TABLE IF NOT EXISTS dim_cultivo (
         FOREIGN KEY (tipo_cultivo_id) REFERENCES dim_tipo_cultivo(id)
 );
 COMMENT ON TABLE dim_cultivo IS
-  'Variedades de cultivo. 3FN: clasificacion/especie heredadas de dim_tipo_cultivo.';
+  'Variedades. 3FN: clasificacion/especie heredadas de dim_tipo_cultivo.';
+
+-- ────────────────────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS dim_maquinaria (
     id                 SERIAL       PRIMARY KEY,

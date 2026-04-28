@@ -16,6 +16,8 @@ CREATE TABLE IF NOT EXISTS dim_provincia (
 COMMENT ON TABLE dim_provincia IS
   'Hoja geográfica. 3FN: nombre_provincia no se repite en dim_campo.';
 
+-- ────────────────────────────────────────────────────────────
+
 CREATE TABLE IF NOT EXISTS dim_tipo_cultivo (
     id            SERIAL       PRIMARY KEY,
     nombre        VARCHAR(100) NOT NULL UNIQUE,
@@ -25,6 +27,8 @@ CREATE TABLE IF NOT EXISTS dim_tipo_cultivo (
 COMMENT ON TABLE dim_tipo_cultivo IS
   'Hoja cultivo. 3FN: clasificacion no se repite en cada variedad.';
 
+-- ────────────────────────────────────────────────────────────
+
 CREATE TABLE IF NOT EXISTS dim_tipo_maquinaria (
     id          SERIAL       PRIMARY KEY,
     nombre      VARCHAR(100) NOT NULL UNIQUE,
@@ -33,6 +37,8 @@ CREATE TABLE IF NOT EXISTS dim_tipo_maquinaria (
 );
 COMMENT ON TABLE dim_tipo_maquinaria IS
   'Hoja maquinaria. 3FN: categoria no se repite en cada equipo.';
+
+-- ────────────────────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS dim_propietario (
     id           SERIAL       PRIMARY KEY,
@@ -45,6 +51,8 @@ CREATE TABLE IF NOT EXISTS dim_propietario (
 );
 COMMENT ON TABLE dim_propietario IS
   'Hoja propietarios. 3FN: datos del dueño no se repiten en cada campo.';
+
+-- ────────────────────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS dim_tiempo (
     id         SERIAL      PRIMARY KEY,
