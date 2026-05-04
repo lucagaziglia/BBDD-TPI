@@ -1,15 +1,3 @@
-"""
-Seed de MongoDB Atlas — sensor_readings
-
-Inserta documentos de lecturas de sensores IoT para todos los lotes
-del DW de AgroPampa S.A. Una lectura cada 15 minutos durante 7 días.
-
-Uso:
-    python nosql/mongodb/seed_sensors.py
-
-Requiere en .env:
-    MONGODB_URI=mongodb+srv://user:pass@cluster.mongodb.net/agtech_sensors
-"""
 import os
 import sys
 import random
@@ -20,52 +8,62 @@ from pymongo import MongoClient
 from dotenv import load_dotenv
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
-# Parámetros base por tipo de suelo (igual que los seeds SQL)
 HUMEDAD_BASE = {
-    "franco":            67.0,
-    "franco-limoso":     66.0,
-    "franco-arcilloso":  64.0,
-    "arcilloso":         62.0,
-    "arenoso":           54.0,
+    "Franco limoso":    66.0,
+    "Franco arcilloso": 64.0,
+    "Arcilloso":        62.0,
+    "Arenoso":          54.0,
+    "Vertisol":         70.0,
 }
 
-# Lotes reales del DW (id, nombre, tipo_suelo)
 LOTES = [
-    (1,  "Lote 1 - La Esperanza",  "franco"),
-    (2,  "Lote 2 - La Esperanza",  "franco-arcilloso"),
-    (3,  "Lote 3 - La Esperanza",  "arcilloso"),
-    (4,  "Lote 1 - Norte Junín",   "franco"),
-    (5,  "Lote 2 - Norte Junín",   "franco-limoso"),
-    (6,  "Lote 1 - Tres Marías",   "franco"),
-    (7,  "Lote 2 - Tres Marías",   "arcilloso"),
-    (8,  "Lote 3 - Tres Marías",   "franco-arcilloso"),
-    (9,  "Lote 1 - La Rinconada",  "franco"),
-    (10, "Lote 2 - La Rinconada",  "franco-limoso"),
-    (11, "Lote 3 - La Rinconada",  "arenoso"),
-    (12, "Lote 1 - Del Paraná",    "franco"),
-    (13, "Lote 2 - Del Paraná",    "arcilloso"),
+    (1,  "Lote C",                "Arcilloso",        "Pergamino"),
+    (2,  "Lote B",                "Franco arcilloso", "Pergamino"),
+    (3,  "Lote A",                "Franco limoso",    "Pergamino"),
+    (4,  "Lote 3 - La Rinconada", "Arenoso",          "Pergamino"),
+    (5,  "Lote 2 - Laguna",       "Franco arcilloso", "Pergamino"),
+    (6,  "Lote 1 - Arroyo",       "Franco limoso",    "Pergamino"),
+    (7,  "Lote 2 - Sur",          "Arcilloso",        "Junín"),
+    (8,  "Lote 1 - Norte",        "Franco limoso",    "Junín"),
+    (9,  "Lote 4 (San Cayetano)", "Arcilloso",        "Nueve de Julio"),
+    (10, "Lote 3 (San Cayetano)", "Franco limoso",    "Nueve de Julio"),
+    (11, "Lote 2 (San Cayetano)", "Arenoso",          "Nueve de Julio"),
+    (12, "Lote 1 (San Cayetano)", "Franco limoso",    "Nueve de Julio"),
+    (13, "Lote 4 (Barrancosa)",   "Franco limoso",    "Rosario"),
+    (14, "Lote 3 (Barrancosa)",   "Arenoso",          "Rosario"),
+    (15, "Lote 2 (Barrancosa)",   "Vertisol",         "Rosario"),
+    (16, "Lote 1 (Barrancosa)",   "Vertisol",         "Rosario"),
+    (17, "Lote 2 - Secundario",   "Franco limoso",    "Venado Tuerto"),
+    (18, "Lote 1 - Principal",    "Franco arcilloso", "Venado Tuerto"),
+    (19, "Lote 3 - Centro",       "Arcilloso",        "Venado Tuerto"),
+    (20, "Lote 2 - Oeste",        "Franco arcilloso", "Venado Tuerto"),
+    (21, "Lote 1 - Este",         "Franco limoso",    "Venado Tuerto"),
+    (22, "Lote Sur",              "Arcilloso",        "Córdoba Capital"),
+    (23, "Lote Norte",            "Franco limoso",    "Córdoba Capital"),
+    (24, "Lote 2 (El Retiro)",    "Vertisol",         "Río Cuarto"),
+    (25, "Lote 1 (El Retiro)",    "Franco limoso",    "Río Cuarto"),
 ]
 
 
 def generar_lecturas(lote_id: int, tipo_suelo: str, dias: int = 7) -> list[dict]:
-    """
-    Genera lecturas sintéticas realistas para un lote.
-    Una lectura cada 15 minutos → 96 lecturas por día por lote.
-    """
     docs = []
     humedad_base = HUMEDAD_BASE.get(tipo_suelo, 62.0)
+
     ahora = datetime.utcnow()
     inicio = ahora - timedelta(days=dias)
     ts = inicio
 
     while ts <= ahora:
-        # Variación sinusoidal por hora del día (más frío de madrugada)
         hora = ts.hour
-        variacion_temp = 8.0 * (hora - 6) / 18 if 6 <= hora <= 18 else -4.0
+        if 6 <= hora <= 18:
+            variacion_temp = 8.0 * (hora - 6) / 18
+        else:
+            variacion_temp = -4.0
 
         docs.append({
             "lote_id":      lote_id,
@@ -91,27 +89,29 @@ def generar_lecturas(lote_id: int, tipo_suelo: str, dias: int = 7) -> list[dict]
 def run_seed():
     uri = os.getenv("MONGODB_URI")
     if not uri:
-        logger.error("MONGODB_URI no configurada en .env. Abortando.")
+        logger.error("MONGODB_URI no está en .env. Cortamos acá.")
         sys.exit(1)
 
-    client = MongoClient(uri, serverSelectionTimeoutMS=5000, tlsCAFile=certifi.where())
+    client = MongoClient(uri, serverSelectionTimeoutMS=10000, tlsCAFile=certifi.where())
     db = client["agtech_sensors"]
     col = db["sensor_readings"]
 
-    # Índices para queries eficientes
+    deleted = col.delete_many({}).deleted_count
+    if deleted:
+        logger.info(f"Limpiamos la colección: {deleted} docs viejos al tacho.")
+
     col.create_index([("lote_id", 1), ("timestamp", -1)])
     col.create_index([("timestamp", -1)])
-    logger.info("Índices creados en sensor_readings.")
+    logger.info("Índices listos.")
 
     total = 0
-    for lote_id, nombre, tipo_suelo in LOTES:
+    for lote_id, nombre, tipo_suelo, localidad in LOTES:
         docs = generar_lecturas(lote_id, tipo_suelo, dias=7)
         col.insert_many(docs)
         total += len(docs)
-        logger.info(f"  {nombre} ({tipo_suelo}): {len(docs)} documentos insertados.")
+        logger.info(f"  lote_id={lote_id:2d} ({localidad}, {tipo_suelo}): {len(docs)} docs.")
 
-    logger.info(f"Seed MongoDB completado: {total} documentos totales.")
-    logger.info(f"Colección: agtech_sensors.sensor_readings")
+    logger.info(f"Listo. {total} documentos cargados en agtech_sensors.sensor_readings")
     client.close()
 
 

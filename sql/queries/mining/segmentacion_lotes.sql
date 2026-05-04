@@ -11,16 +11,17 @@
 
 WITH rendimiento_por_lote AS (
     SELECT
-        l.id                                                 AS lote_id,
+        l.lote_id,
         l.nombre                                             AS lote,
-        l.tipo_suelo,
+        ts.nombre                                            AS tipo_suelo,
         AVG(f.rendimiento_kg_ha)                             AS rendimiento_promedio,
         STDDEV(f.rendimiento_kg_ha) /
             NULLIF(AVG(f.rendimiento_kg_ha), 0)              AS coeficiente_variacion,
-        COUNT(*)                                             AS campañas_medidas
+        COUNT(*)                                             AS observaciones
     FROM fact_produccion f
-    JOIN dim_lote l ON f.lote_id = l.id
-    GROUP BY l.id, l.nombre, l.tipo_suelo
+    JOIN dim_lote        l  ON l.lote_id        = f.lote_id
+    JOIN dim_tipo_suelo  ts ON ts.tipo_suelo_id = l.tipo_suelo_id
+    GROUP BY l.lote_id, l.nombre, ts.nombre
 ),
 segmentacion AS (
     SELECT
@@ -32,7 +33,7 @@ SELECT
     lote_id,
     lote,
     tipo_suelo,
-    campañas_medidas,
+    observaciones,
     ROUND(rendimiento_promedio::numeric,  2) AS rendimiento_avg_kg_ha,
     ROUND(coeficiente_variacion::numeric, 4) AS riesgo_cv,
     CASE grupo_rendimiento

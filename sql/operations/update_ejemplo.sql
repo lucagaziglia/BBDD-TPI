@@ -8,26 +8,34 @@
 -- idempotencia: si el pipeline corre dos veces, no duplica datos.
 -- ============================================================
 
--- Ejemplo A: Actualizar precio de venta tras corrección de mercado
+-- Ejemplo A: Actualizar precio promedio de venta tras corrección de mercado
 UPDATE fact_produccion
-SET    precio_venta_tn = 362.50,
-       updated_at      = NOW()
-WHERE  tiempo_id  = (SELECT id FROM dim_tiempo WHERE campania = '2024/2025' LIMIT 1)
-AND    cultivo_id = (SELECT id FROM dim_cultivo LIMIT 1);
+SET    previo_venta_tn_prom = 362.50
+WHERE  tiempo_id  IN (
+           SELECT tiempo_id FROM dim_tiempo
+           WHERE fecha BETWEEN '2024-07-01' AND '2025-06-30'
+       )
+AND    id_cultivo = (SELECT id_cultivo FROM dim_cultivo
+                     WHERE cultivo = 'Soja DM 4612 RR');
 
 -- Verificar el resultado
-SELECT f.id, t.campania, c.variedad, f.precio_venta_tn, f.updated_at
+SELECT f.id, t.fecha, c.cultivo, f.previo_venta_tn_prom
 FROM   fact_produccion f
-JOIN   dim_tiempo  t ON t.id = f.tiempo_id
-JOIN   dim_cultivo c ON c.id = f.cultivo_id
-WHERE  t.campania = '2024/2025'
+JOIN   dim_tiempo  t ON t.tiempo_id  = f.tiempo_id
+JOIN   dim_cultivo c ON c.id_cultivo = f.id_cultivo
+WHERE  t.fecha BETWEEN '2024-07-01' AND '2025-06-30'
+AND    c.cultivo = 'Soja DM 4612 RR'
 LIMIT  5;
 
 -- Ejemplo B: UPSERT en dim_clima (patrón del ETL)
 -- Esto es exactamente lo que hace el loader del pipeline cada día
-INSERT INTO dim_clima (localidad_id, fecha, temp_promedio, humedad_promedio)
-VALUES (1, CURRENT_DATE, 22.5, 65.3)
-ON CONFLICT (localidad_id, fecha) DO UPDATE SET
+INSERT INTO dim_clima (lote_id, tiempo_id, temp_promedio, humedad_promedio)
+VALUES (
+    1,
+    (SELECT tiempo_id FROM dim_tiempo WHERE fecha = '2024-04-01'),
+    22.5,
+    65.3
+)
+ON CONFLICT (lote_id, tiempo_id) DO UPDATE SET
     temp_promedio    = EXCLUDED.temp_promedio,
-    humedad_promedio = EXCLUDED.humedad_promedio,
-    created_at       = NOW();
+    humedad_promedio = EXCLUDED.humedad_promedio;

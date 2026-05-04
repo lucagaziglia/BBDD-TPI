@@ -3,54 +3,81 @@
 -- Ejecutar DESPUÉS de 02_dimensions_intermediate.sql
 -- ============================================================
 
+CREATE TABLE IF NOT EXISTS dim_campo (
+    campo_id       SERIAL       PRIMARY KEY,
+    propietario_id INTEGER      NOT NULL,
+    localidad_id   INTEGER      NOT NULL,
+    nombre         VARCHAR(100) NOT NULL,
+    activo         BOOLEAN      DEFAULT TRUE,
+    CONSTRAINT fk_campo_propietario
+        FOREIGN KEY (propietario_id) REFERENCES dim_propietario(propietario_id),
+    CONSTRAINT fk_campo_localidad
+        FOREIGN KEY (localidad_id)   REFERENCES dim_localidad(id)
+);
+COMMENT ON TABLE dim_campo IS
+  'Nodo intermedio snowflake: conecta propietario y localidad. activo=baja lógica.';
+
+-- ────────────────────────────────────────────────────────────
+
 CREATE TABLE IF NOT EXISTS dim_lote (
-    id              SERIAL       PRIMARY KEY,
-    campo_id        INT          NOT NULL,
-    nombre          VARCHAR(100) NOT NULL,
-    superficie_ha   FLOAT        NOT NULL,
-    tipo_suelo      VARCHAR(50),
-    coordenadas_wkt TEXT,
-    -- activo: columna para baja lógica en operaciones de eliminación
-    -- En un DW no se eliminan filas físicamente — se marca activo=FALSE
-    -- El ETL excluye lotes inactivos de futuros procesos de carga
-    activo          BOOLEAN      DEFAULT TRUE,
-    created_at      TIMESTAMP    DEFAULT NOW(),
-    updated_at      TIMESTAMP    DEFAULT NOW(),
+    lote_id       SERIAL         PRIMARY KEY,
+    campo_id      INTEGER        NOT NULL,
+    nombre        VARCHAR(50)    NOT NULL,
+    superficie_ha DECIMAL(10,2)  NOT NULL,
+    tipo_suelo_id INTEGER        NOT NULL,
+    coordenadas   VARCHAR(255),
+    -- activo: columna para baja lógica en operaciones de eliminación.
+    -- En un DW no se eliminan filas físicamente — se marca activo=FALSE.
+    -- El ETL excluye lotes inactivos de futuros procesos de carga.
+    activo        BOOLEAN        DEFAULT TRUE,
+    created_at    TIMESTAMP      DEFAULT NOW(),
+    updated_at    TIMESTAMP      DEFAULT NOW(),
     CONSTRAINT fk_lote_campo
-        FOREIGN KEY (campo_id) REFERENCES dim_campo(id)
+        FOREIGN KEY (campo_id)      REFERENCES dim_campo(campo_id),
+    CONSTRAINT fk_lote_tipo_suelo
+        FOREIGN KEY (tipo_suelo_id) REFERENCES dim_tipo_suelo(tipo_suelo_id)
 );
 COMMENT ON TABLE dim_lote IS
   'Granularidad más fina del DW. activo=FALSE = baja lógica sin perder historial.';
 
 -- ────────────────────────────────────────────────────────────
 
--- CORRECCIÓN 3FN (migración 012):
--- dim_clima usa localidad_id en lugar de lote_id.
--- JUSTIFICACIÓN: el clima es un fenómeno geográfico de zona,
--- no de lote individual. Con lote_id existían dos caminos al
--- mismo lote desde fact_produccion, violando FNBC:
---   fact.lote_id → dim_lote
---   fact.clima_id → dim_clima.lote_id → dim_lote  ← redundante
--- Con localidad_id ese problema desaparece.
--- JOIN correcto: fact → dim_lote → dim_campo → dim_localidad → dim_clima
+CREATE TABLE IF NOT EXISTS dim_maquinaria (
+    maquinaria_id        SERIAL    PRIMARY KEY,
+    "año_fabricacion"    INTEGER,
+    modelo_maquinaria_id INTEGER   NOT NULL,
+    estado_maquinaria_id INTEGER   NOT NULL,
+    created_at           TIMESTAMP DEFAULT NOW(),
+    updated_at           TIMESTAMP DEFAULT NOW(),
+    CONSTRAINT fk_maquinaria_modelo
+        FOREIGN KEY (modelo_maquinaria_id) REFERENCES dim_modelo_maquinaria(modelo_maquinaria_id),
+    CONSTRAINT fk_maquinaria_estado
+        FOREIGN KEY (estado_maquinaria_id) REFERENCES dim_estado_maquinaria(estado_maquinaria_id)
+);
+COMMENT ON TABLE dim_maquinaria IS
+  'Equipos individuales. 3FN: tipo y marca heredados via dim_modelo_maquinaria.';
+
+-- ────────────────────────────────────────────────────────────
+
 CREATE TABLE IF NOT EXISTS dim_clima (
-    id                SERIAL    PRIMARY KEY,
-    localidad_id      INT       NOT NULL,
-    fecha             DATE      NOT NULL,
-    temp_promedio     FLOAT,
-    temp_max          FLOAT,
-    temp_min          FLOAT,
-    -- humedad_promedio: agregado por el ETL desde MongoDB sensor_readings
-    humedad_promedio  FLOAT,
-    precipitacion_mm  FLOAT,
-    created_at        TIMESTAMP DEFAULT NOW(),
-    CONSTRAINT fk_clima_localidad
-        FOREIGN KEY (localidad_id) REFERENCES dim_localidad(id),
-    CONSTRAINT uq_clima_localidad_fecha
-        UNIQUE (localidad_id, fecha)
+    clima_id         SERIAL   PRIMARY KEY,
+    lote_id          INTEGER  NOT NULL,
+    temp_promedio    NUMERIC,
+    temp_max         NUMERIC,
+    temp_min         NUMERIC,
+    tiempo_id        INTEGER  NOT NULL,
+    -- humedad_promedio: agregado por el ETL desde MongoDB sensor_readings.
+    humedad_promedio NUMERIC,
+    precipitacion_mm NUMERIC,
+    CONSTRAINT fk_clima_lote
+        FOREIGN KEY (lote_id)   REFERENCES dim_lote(lote_id),
+    CONSTRAINT fk_clima_tiempo
+        FOREIGN KEY (tiempo_id) REFERENCES dim_tiempo(tiempo_id),
+    CONSTRAINT uq_clima_lote_tiempo
+        UNIQUE (lote_id, tiempo_id)
 );
 COMMENT ON TABLE dim_clima IS
-  '3FN: clima por localidad. ETL: MongoDB → pandas → UPSERT aquí.';
+  'Clima por lote × tiempo. ETL: MongoDB → pandas → UPSERT aquí.';
 
-CREATE INDEX IF NOT EXISTS idx_clima_localidad_fecha
-    ON dim_clima(localidad_id, fecha);
+CREATE INDEX IF NOT EXISTS idx_clima_lote_tiempo
+    ON dim_clima(lote_id, tiempo_id);

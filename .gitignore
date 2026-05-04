@@ -17,3 +17,10 @@ env/
 
 # Bases de datos locales
 *.sqlite3
+
+# Archivos de Claude / AI
+CLAUDE.md
+.claude/
+
+# Archivos de Tests
+.pytest_cache/

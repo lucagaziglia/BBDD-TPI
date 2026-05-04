@@ -9,65 +9,82 @@
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS dim_provincia (
-    id          SERIAL       PRIMARY KEY,
-    nombre      VARCHAR(100) NOT NULL UNIQUE,
-    codigo_iso  VARCHAR(10)
+    id     SERIAL      PRIMARY KEY,
+    nombre VARCHAR(50) NOT NULL UNIQUE
 );
 COMMENT ON TABLE dim_provincia IS
-  'Hoja geográfica. 3FN: nombre_provincia no se repite en dim_campo.';
-
--- ────────────────────────────────────────────────────────────
-
-CREATE TABLE IF NOT EXISTS dim_tipo_cultivo (
-    id            SERIAL       PRIMARY KEY,
-    nombre        VARCHAR(100) NOT NULL UNIQUE,
-    especie       VARCHAR(200),
-    clasificacion VARCHAR(50)
-);
-COMMENT ON TABLE dim_tipo_cultivo IS
-  'Hoja cultivo. 3FN: clasificacion no se repite en cada variedad.';
-
--- ────────────────────────────────────────────────────────────
-
-CREATE TABLE IF NOT EXISTS dim_tipo_maquinaria (
-    id          SERIAL       PRIMARY KEY,
-    nombre      VARCHAR(100) NOT NULL UNIQUE,
-    categoria   VARCHAR(50),
-    descripcion TEXT
-);
-COMMENT ON TABLE dim_tipo_maquinaria IS
-  'Hoja maquinaria. 3FN: categoria no se repite en cada equipo.';
+  'Hoja geográfica. 3FN: nombre_provincia no se repite en dim_localidad.';
 
 -- ────────────────────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS dim_propietario (
-    id           SERIAL       PRIMARY KEY,
-    razon_social VARCHAR(200) NOT NULL,
-    cuit         VARCHAR(13)  NOT NULL UNIQUE,
-    email        VARCHAR(200),
-    telefono     VARCHAR(30),
-    created_at   TIMESTAMP    DEFAULT NOW(),
-    updated_at   TIMESTAMP    DEFAULT NOW()
+    propietario_id SERIAL       PRIMARY KEY,
+    email          VARCHAR(100),
+    cuit           VARCHAR(20)  UNIQUE,
+    telefono       VARCHAR(255),
+    activo         BOOLEAN      DEFAULT TRUE
 );
 COMMENT ON TABLE dim_propietario IS
-  'Hoja propietarios. 3FN: datos del dueño no se repiten en cada campo.';
+  'Hoja propietarios. activo = baja lógica del propietario.';
 
 -- ────────────────────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS dim_tiempo (
-    id         SERIAL      PRIMARY KEY,
-    fecha      DATE        NOT NULL UNIQUE,
-    dia        INT         NOT NULL,
-    semana     INT         NOT NULL,
-    mes        INT         NOT NULL,
-    trimestre  INT         NOT NULL,
-    anio       INT         NOT NULL,
-    nombre_mes VARCHAR(20) NOT NULL,
-    campania   VARCHAR(10) NOT NULL,
-    es_feriado BOOLEAN     DEFAULT FALSE
+    tiempo_id SERIAL  PRIMARY KEY,
+    fecha     DATE    NOT NULL UNIQUE,
+    dia       INTEGER NOT NULL,
+    semana    INTEGER NOT NULL,
+    mes       INTEGER NOT NULL,
+    trimestre INTEGER NOT NULL,
+    "año"     INTEGER NOT NULL
 );
 COMMENT ON TABLE dim_tiempo IS
-  'Jerarquía temporal: día → semana → mes → trimestre → año → campaña agrícola.';
+  'Jerarquía temporal: día → semana → mes → trimestre → año.';
 
-CREATE INDEX IF NOT EXISTS idx_tiempo_fecha    ON dim_tiempo(fecha);
-CREATE INDEX IF NOT EXISTS idx_tiempo_campania ON dim_tiempo(campania);
+CREATE INDEX IF NOT EXISTS idx_tiempo_fecha ON dim_tiempo(fecha);
+CREATE INDEX IF NOT EXISTS idx_tiempo_anio  ON dim_tiempo("año");
+
+-- ────────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS dim_estado_maquinaria (
+    estado_maquinaria_id SERIAL       PRIMARY KEY,
+    estado               VARCHAR(255) NOT NULL UNIQUE
+);
+COMMENT ON TABLE dim_estado_maquinaria IS
+  'Hoja maquinaria. 3FN: estados centralizados (Operativo, En reparación, etc).';
+
+-- ────────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS dim_tipo_suelo (
+    tipo_suelo_id SERIAL       PRIMARY KEY,
+    nombre        VARCHAR(255) NOT NULL UNIQUE
+);
+COMMENT ON TABLE dim_tipo_suelo IS
+  'Hoja suelo. 3FN: tipo_suelo deja de repetirse como string en dim_lote.';
+
+-- ────────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS dim_tipo_maquinaria (
+    tipo_maquinaria_id SERIAL       PRIMARY KEY,
+    nombre             VARCHAR(255) NOT NULL UNIQUE
+);
+COMMENT ON TABLE dim_tipo_maquinaria IS
+  'Hoja maquinaria. Tipos: Sembradora, Cosechadora, Pulverizadora, etc.';
+
+-- ────────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS dim_marca_maquinaria (
+    marca_maquinaria_id SERIAL       PRIMARY KEY,
+    marca_maquinaria    VARCHAR(255) NOT NULL UNIQUE
+);
+COMMENT ON TABLE dim_marca_maquinaria IS
+  'Hoja maquinaria. Marcas: John Deere, Case IH, New Holland, etc.';
+
+-- ────────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS dim_cultivo (
+    id_cultivo SERIAL      PRIMARY KEY,
+    cultivo    VARCHAR(50) NOT NULL UNIQUE
+);
+COMMENT ON TABLE dim_cultivo IS
+  'Hoja cultivo. Variedades comerciales (Soja DM 4612, Trigo ACA 315, etc).';
