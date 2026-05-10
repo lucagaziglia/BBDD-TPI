@@ -1,7 +1,19 @@
+"""
+Pipeline ETL principal — AgTech Datawarehouse
+
+ETL completo: MongoDB + Redis → transformación → Supabase.
+
+Uso desde la raíz del repo:
+    python etl/pipeline.py
+
+Uso desde dentro de etl/:
+    python pipeline.py
+"""
 import sys
 import os
 import logging
 from datetime import datetime, date, timedelta
+
 
 sys.path.insert(0, os.path.dirname(__file__))
 
@@ -21,6 +33,16 @@ load_dotenv()
 
 
 def fetch_tiempo_map() -> dict[date, int]:
+    """
+    Consulta dim_tiempo para obtener el mapeo fecha → tiempo_id.
+
+    dim_tiempo tiene una entrada por mes (primer día). El transformer usa
+    este mapeo para resolver el tiempo_id de cada lectura agregada por mes.
+
+    Returns:
+        Dict {date(YYYY,MM,01): tiempo_id}. Si falla, retorna dict vacío
+        (el transformer descartará lecturas que no se puedan mapear).
+    """
     url = os.getenv("SUPABASE_URL")
     key = os.getenv("SUPABASE_KEY")
     if not url or not key:
@@ -50,6 +72,12 @@ def fetch_tiempo_map() -> dict[date, int]:
 
 
 def fetch_lotes_activos() -> set[int]:
+    """
+    Consulta los lote_id activos en dim_lote.
+
+    Se usa en el transformer para descartar lecturas de lotes inexistentes
+    o dados de baja (activo=FALSE), evitando errores de FK al cargar dim_clima.
+    """
     url = os.getenv("SUPABASE_URL")
     key = os.getenv("SUPABASE_KEY")
     if not url or not key:
@@ -75,6 +103,15 @@ def fetch_lotes_activos() -> set[int]:
 
 
 def run_pipeline(dias: int = 30) -> dict:
+    """
+    Ejecuta el pipeline ETL completo.
+
+    Args:
+        dias: Cantidad de días hacia atrás a procesar. Default: 30.
+
+    Returns:
+        Dict con resultados: filas_extraidas, filas_transformadas, filas_cargadas.
+    """
     resultados = {"filas_extraidas": 0, "filas_transformadas": 0, "filas_cargadas": 0}
     inicio = datetime.now()
     logger.info(f"=== Iniciando pipeline ETL (últimos {dias} días) ===")

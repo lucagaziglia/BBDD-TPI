@@ -1,3 +1,14 @@
+"""
+Carga el "estado actual" de los sensores en Redis.
+
+A diferencia de Mongo, que guarda el histórico crudo, Redis solo tiene la
+ÚLTIMA lectura de cada lote. Es lo que mira el sistema de riego automático
+para decidir si hay que abrir la canilla o no — necesita respuesta en
+milisegundos, no se puede ir a buscar a la base SQL.
+
+Correr con:
+    python nosql/redis/seed_realtime.py
+"""
 import os
 import sys
 import random
@@ -56,7 +67,7 @@ def run_seed():
         sys.exit(1)
 
     r = redis.Redis.from_url(url, decode_responses=True)
-    r.ping()  
+    r.ping()
     logger.info("Conectado a Redis.")
 
     total_keys = 0

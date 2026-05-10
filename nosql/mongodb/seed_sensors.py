@@ -1,3 +1,13 @@
+"""
+Carga datos de prueba en MongoDB para simular los sensores IoT del campo.
+
+Cada lote tiene dos sensores: uno de humedad de suelo y uno de temperatura.
+Toman una lectura cada 15 minutos. Generamos 7 días para arrancar; alcanza
+para que el ETL tenga material y la dim_clima del DW se llene.
+
+Correr con:
+    python nosql/mongodb/seed_sensors.py
+"""
 import os
 import sys
 import random
@@ -51,7 +61,13 @@ LOTES = [
 
 
 def generar_lecturas(lote_id: int, tipo_suelo: str, dias: int = 7) -> list[dict]:
+    """
+    Arma las lecturas falsas de un lote. Devuelve una lista de dicts lista
+    para meter en MongoDB. Una lectura cada 15 min de humedad y otra de
+    temperatura, así que un día son 96 timestamps × 2 sensores = 192 docs.
+    """
     docs = []
+
     humedad_base = HUMEDAD_BASE.get(tipo_suelo, 62.0)
 
     ahora = datetime.utcnow()
@@ -97,9 +113,9 @@ def run_seed():
     col = db["sensor_readings"]
 
     deleted = col.delete_many({}).deleted_count
+
     if deleted:
         logger.info(f"Limpiamos la colección: {deleted} docs viejos al tacho.")
-
     col.create_index([("lote_id", 1), ("timestamp", -1)])
     col.create_index([("timestamp", -1)])
     logger.info("Índices listos.")
