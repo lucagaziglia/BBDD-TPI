@@ -8,6 +8,26 @@ milisegundos, no se puede ir a buscar a la base SQL.
 
 Correr con:
     python nosql/redis/seed_realtime.py
+
+    
+1. ¿POR QUÉ TEMPORAL?: Usamos un TTL (Time To Live) de 3600s (1 hora). 
+   Esto asegura que el Dashboard solo muestre datos frescos. Si un sensor 
+   falla y deja de reportar, la llave expira y el sistema detecta que el 
+   lote está "Offline" en lugar de mostrar valores viejos.
+
+2. COMPORTAMIENTO AL RE-EJECUTAR: El comando SET de Redis es destructivo. 
+   Si corres este script de nuevo, se sobrescriben los valores anteriores 
+   y se reinicia el reloj del TTL. Ideal para simular cambios de estado 
+   en vivo durante una demo.
+
+3. FAST DATA vs. SLOW DATA:
+   - Redis: Capa de velocidad. Respuesta en <1ms. Sin historial.
+   - MongoDB: Capa de persistencia cruda. Historial completo (horas).
+   - Supabase: Capa de analítica. Datos agregados (días) para KPIs.
+
+4. LÓGICA DE SIMULACIÓN: Se utiliza random.gauss para evitar valores lineales
+   y simular una distribución normal de temperatura/humedad según el tipo 
+   de suelo definido en LOTES.
 """
 import os
 import sys
