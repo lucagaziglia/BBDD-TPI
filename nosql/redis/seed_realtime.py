@@ -28,6 +28,11 @@ Correr con:
 4. LÓGICA DE SIMULACIÓN: Se utiliza random.gauss para evitar valores lineales
    y simular una distribución normal de temperatura/humedad según el tipo 
    de suelo definido en LOTES.
+
+- El script genera 25 lotes para demostrar ESCALABILIDAD.
+   - Redis y Mongo reciben telemetría de todos los sensores (25).
+   - El Datawarehouse (Supabase) solo procesa los 9 lotes registrados.
+   - Esto permite dar de alta nuevos campos sin tocar el código de los sensores.
 """
 import os
 import sys
