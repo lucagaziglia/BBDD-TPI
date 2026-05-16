@@ -2,6 +2,7 @@ import sys
 import os
 import logging
 from datetime import datetime, date, timedelta
+from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(__file__))
 
@@ -9,6 +10,9 @@ from dotenv import load_dotenv
 from extractors.mongodb_extractor import extract_sensor_readings
 from extractors.redis_extractor import extract_realtime_state
 from transformers.sensor_transformer import transform_readings
+
+env_path = Path(__file__).parent.parent / '.env'
+load_dotenv(dotenv_path=env_path)
 
 # CAMBIO 1: Importamos el nuevo loader
 from loaders.supabase_loader import load_to_mediciones_diarias
@@ -19,7 +23,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-load_dotenv()
+
 
 # CAMBIO 2: La función fetch_tiempo_map() fue eliminada porque la fecha ahora se guarda directo
 

@@ -11,7 +11,7 @@ def load_to_mediciones_diarias(df: pd.DataFrame) -> int:
         return 0
 
     url = os.getenv("SUPABASE_URL")
-    key = os.getenv("SUPABASE_KEY")
+    key = os.getenv("SUPABASE_ANON_KEY")
     
     if not url or not key:
         logger.error("Faltan credenciales de Supabase. Abortando carga.")
