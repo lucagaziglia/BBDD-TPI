@@ -1,135 +1,85 @@
 """
-Carga datos de prueba en MongoDB para simular los sensores IoT del campo.
+Genera 18,000 registros aproximadamente (25 lotes × 30 días × 24 lecturas por día).
 
-Cada lote tiene dos sensores: uno de humedad de suelo y uno de temperatura.
-Toman una lectura cada 15 minutos. Generamos 7 días para arrancar; alcanza
-para que el ETL tenga material y la dim_clima del DW se llene.
+Simula:
 
-Correr con:
-    python nosql/mongodb/seed_sensors.py
+Periodicidad: Una lectura cada 1 hora de forma ininterrumpida.
+
+Cobertura: 25 lotes diferentes (identificados del 1 al 25).
+
+Variables Climáticas y de Suelo:
+
+temp: Calor ambiente (entre 15°C y 35°C).
+
+humedad_suelo: Qué tan regada está la tierra (30% a 80%).
+
+precipitacion: Lluvia. Tiene una lógica de probabilidad: el 80% de las veces marca 0 (no llueve), y el 20% restante genera entre 0 y 5mm.
+
+agua: Consumo de riego (10 a 50 unidades).
+
+3. Qué se "Extrae" de los Sensores (El esquema)
+Cada lectura es un documento JSON que contiene:
+
+lote_id: A qué lote pertenece la medición.
+
+timestamp: Fecha y hora exacta del reporte.
+
+temp, humedad_suelo, precipitacion, agua: Los valores crudos medidos.
+
 """
+
 import os
-import sys
 import random
-import logging
-import certifi
 from datetime import datetime, timedelta
 from pymongo import MongoClient
 from dotenv import load_dotenv
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-
 load_dotenv()
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-logger = logging.getLogger(__name__)
 
-HUMEDAD_BASE = {
-    "Franco limoso":    66.0,
-    "Franco arcilloso": 64.0,
-    "Arcilloso":        62.0,
-    "Arenoso":          54.0,
-    "Vertisol":         70.0,
-}
+# Configuración
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
+DB_NAME = "agropampa_nosql"
+COLLECTION = "sensor_readings"
 
-LOTES = [
-    (1,  "Lote C",                "Arcilloso",        "Pergamino"),
-    (2,  "Lote B",                "Franco arcilloso", "Pergamino"),
-    (3,  "Lote A",                "Franco limoso",    "Pergamino"),
-    (4,  "Lote 3 - La Rinconada", "Arenoso",          "Pergamino"),
-    (5,  "Lote 2 - Laguna",       "Franco arcilloso", "Pergamino"),
-    (6,  "Lote 1 - Arroyo",       "Franco limoso",    "Pergamino"),
-    (7,  "Lote 2 - Sur",          "Arcilloso",        "Junín"),
-    (8,  "Lote 1 - Norte",        "Franco limoso",    "Junín"),
-    (9,  "Lote 4 (San Cayetano)", "Arcilloso",        "Nueve de Julio"),
-    (10, "Lote 3 (San Cayetano)", "Franco limoso",    "Nueve de Julio"),
-    (11, "Lote 2 (San Cayetano)", "Arenoso",          "Nueve de Julio"),
-    (12, "Lote 1 (San Cayetano)", "Franco limoso",    "Nueve de Julio"),
-    (13, "Lote 4 (Barrancosa)",   "Franco limoso",    "Rosario"),
-    (14, "Lote 3 (Barrancosa)",   "Arenoso",          "Rosario"),
-    (15, "Lote 2 (Barrancosa)",   "Vertisol",         "Rosario"),
-    (16, "Lote 1 (Barrancosa)",   "Vertisol",         "Rosario"),
-    (17, "Lote 2 - Secundario",   "Franco limoso",    "Venado Tuerto"),
-    (18, "Lote 1 - Principal",    "Franco arcilloso", "Venado Tuerto"),
-    (19, "Lote 3 - Centro",       "Arcilloso",        "Venado Tuerto"),
-    (20, "Lote 2 - Oeste",        "Franco arcilloso", "Venado Tuerto"),
-    (21, "Lote 1 - Este",         "Franco limoso",    "Venado Tuerto"),
-    (22, "Lote Sur",              "Arcilloso",        "Córdoba Capital"),
-    (23, "Lote Norte",            "Franco limoso",    "Córdoba Capital"),
-    (24, "Lote 2 (El Retiro)",    "Vertisol",         "Río Cuarto"),
-    (25, "Lote 1 (El Retiro)",    "Franco limoso",    "Río Cuarto"),
-]
+def generate_iot_data(days=30):
+    client = MongoClient(MONGO_URI)
+    db = client[DB_NAME]
+    col = db[COLLECTION]
+    
+    # Limpiamos para no duplicar en el test
+    col.delete_many({}) 
+    
+    lotes = range(1, 26) # Tus 25 lotes
+    start_date = datetime.now() - timedelta(days=days)
+    
+    records = []
+    print(f"--- Generando datos para {days} días ---")
 
-
-def generar_lecturas(lote_id: int, tipo_suelo: str, dias: int = 7) -> list[dict]:
-    """
-    Arma las lecturas falsas de un lote. Devuelve una lista de dicts lista
-    para meter en MongoDB. Una lectura cada 15 min de humedad y otra de
-    temperatura, así que un día son 96 timestamps × 2 sensores = 192 docs.
-    """
-    docs = []
-
-    humedad_base = HUMEDAD_BASE.get(tipo_suelo, 62.0)
-
-    ahora = datetime.utcnow()
-    inicio = ahora - timedelta(days=dias)
-    ts = inicio
-
-    while ts <= ahora:
-        hora = ts.hour
-        if 6 <= hora <= 18:
-            variacion_temp = 8.0 * (hora - 6) / 18
-        else:
-            variacion_temp = -4.0
-
-        docs.append({
-            "lote_id":      lote_id,
-            "tipo_suelo":   tipo_suelo,
-            "timestamp":    ts,
-            "tipo_lectura": "HUMEDAD_SUELO",
-            "valor":        round(humedad_base + random.gauss(0, 3.5), 2),
-            "unidad":       "%",
-        })
-        docs.append({
-            "lote_id":      lote_id,
-            "tipo_suelo":   tipo_suelo,
-            "timestamp":    ts,
-            "tipo_lectura": "TEMPERATURA",
-            "valor":        round(18.0 + variacion_temp + random.gauss(0, 1.2), 2),
-            "unidad":       "°C",
-        })
-        ts += timedelta(minutes=15)
-
-    return docs
-
-
-def run_seed():
-    uri = os.getenv("MONGODB_URI")
-    if not uri:
-        logger.error("MONGODB_URI no está en .env. Cortamos acá.")
-        sys.exit(1)
-
-    client = MongoClient(uri, serverSelectionTimeoutMS=10000, tlsCAFile=certifi.where())
-    db = client["agtech_sensors"]
-    col = db["sensor_readings"]
-
-    deleted = col.delete_many({}).deleted_count
-
-    if deleted:
-        logger.info(f"Limpiamos la colección: {deleted} docs viejos al tacho.")
-    col.create_index([("lote_id", 1), ("timestamp", -1)])
-    col.create_index([("timestamp", -1)])
-    logger.info("Índices listos.")
-
-    total = 0
-    for lote_id, nombre, tipo_suelo, localidad in LOTES:
-        docs = generar_lecturas(lote_id, tipo_suelo, dias=7)
-        col.insert_many(docs)
-        total += len(docs)
-        logger.info(f"  lote_id={lote_id:2d} ({localidad}, {tipo_suelo}): {len(docs)} docs.")
-
-    logger.info(f"Listo. {total} documentos cargados en agtech_sensors.sensor_readings")
-    client.close()
-
+    for lote in lotes:
+        current_time = start_date
+        while current_time < datetime.now():
+            # Simulamos una lectura cada 1 hora
+            # Usamos los nombres exactos que tu transformer ya sabe mapear
+            reading = {
+                "lote_id": lote,
+                "timestamp": current_time,
+                "temp": round(random.uniform(15, 35), 2),
+                "humedad_suelo": round(random.uniform(30, 80), 2),
+                "precipitacion": round(random.uniform(0, 5) if random.random() > 0.8 else 0, 2),
+                "agua": round(random.uniform(10, 50), 2)
+            }
+            records.append(reading)
+            current_time += timedelta(hours=1)
+            
+            # Insertamos en batches para no saturar la memoria
+            if len(records) >= 1000:
+                col.insert_many(records)
+                records = []
+                
+    if records:
+        col.insert_many(records)
+        
+    print(f"Finalizado: {col.count_documents({})} registros insertados en MongoDB.")
 
 if __name__ == "__main__":
-    run_seed()
+    generate_iot_data(30)
