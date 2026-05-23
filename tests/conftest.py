@@ -3,11 +3,11 @@ conftest.py — Fixtures compartidas para toda la suite de tests.
 
 Disponibles en todos los módulos de tests sin necesidad de importar.
 """
-import sys
 import os
-import pytest
-import pandas as pd
+import sys
 from datetime import datetime
+
+import pytest
 
 # ── Path fix: permite importar los módulos del proyecto ──────────────────────
 # Agrega la raíz del repo y el directorio etl/ al sys.path
@@ -18,51 +18,36 @@ sys.path.insert(0, ETL_DIR)
 
 
 # ────────────────────────────────────────────────────────────────────────────
-# Fixtures: datos crudos de MongoDB (mock)
+# Fixtures: datos crudos de Cassandra (mock)
 # ────────────────────────────────────────────────────────────────────────────
 
 @pytest.fixture
 def raw_readings_validos():
-    """Lecturas crudas dentro de rangos válidos (el transformer NO las descarta)."""
+    """
+    Lecturas crudas con la misma estructura que devuelve `cassandra_extractor`
+    (antes era el formato de MongoDB; el contrato del transformer no cambió).
+    """
     return [
-        {"lote_id": 1, "timestamp": datetime(2024, 11, 3, 8,  0), "tipo_lectura": "HUMEDAD_SUELO", "valor": 62.3},
-        {"lote_id": 1, "timestamp": datetime(2024, 11, 3, 8, 15), "tipo_lectura": "HUMEDAD_SUELO", "valor": 61.8},
-        {"lote_id": 1, "timestamp": datetime(2024, 11, 3, 8,  0), "tipo_lectura": "TEMPERATURA",   "valor": 21.4},
-        {"lote_id": 1, "timestamp": datetime(2024, 11, 3, 8, 15), "tipo_lectura": "TEMPERATURA",   "valor": 21.6},
-        {"lote_id": 2, "timestamp": datetime(2024, 11, 3, 8,  0), "tipo_lectura": "HUMEDAD_SUELO", "valor": 45.1},
-        {"lote_id": 2, "timestamp": datetime(2024, 11, 3, 8,  0), "tipo_lectura": "TEMPERATURA",   "valor": 23.0},
-    ]
-
-
-@pytest.fixture
-def raw_readings_con_outliers(raw_readings_validos):
-    """Lecturas que mezclan valores válidos con outliers extremos."""
-    return raw_readings_validos + [
-        # Humedad imposible (> 100 y < 10)
-        {"lote_id": 3, "timestamp": datetime(2024, 11, 3, 8, 0), "tipo_lectura": "HUMEDAD_SUELO", "valor": 150.0},
-        {"lote_id": 3, "timestamp": datetime(2024, 11, 3, 8, 0), "tipo_lectura": "HUMEDAD_SUELO", "valor": 5.0},
-        # Temperatura imposible (> 50 y < -10)
-        {"lote_id": 3, "timestamp": datetime(2024, 11, 3, 8, 0), "tipo_lectura": "TEMPERATURA",   "valor": 80.0},
-        {"lote_id": 3, "timestamp": datetime(2024, 11, 3, 8, 0), "tipo_lectura": "TEMPERATURA",   "valor": -25.0},
+        {"lote_id": 1, "timestamp": datetime(2024, 11, 3, 8,  0),
+         "temp": 21.4, "humedad_suelo": 62.3, "precipitacion": 0.0, "agua": 15.0},
+        {"lote_id": 1, "timestamp": datetime(2024, 11, 3, 9,  0),
+         "temp": 21.6, "humedad_suelo": 61.8, "precipitacion": 0.0, "agua": 18.0},
+        {"lote_id": 2, "timestamp": datetime(2024, 11, 3, 8,  0),
+         "temp": 23.0, "humedad_suelo": 45.1, "precipitacion": 0.0, "agua": 22.0},
+        {"lote_id": 2, "timestamp": datetime(2024, 11, 3, 9,  0),
+         "temp": 23.2, "humedad_suelo": 46.0, "precipitacion": 2.5, "agua": 20.0},
     ]
 
 
 @pytest.fixture
 def lote_localidad_map():
-    """Mapeo lote_id → localidad_id de ejemplo."""
+    """Mapeo lote_id → localidad_id de ejemplo (legacy, usado por algunos tests)."""
     return {1: 10, 2: 11, 3: 12}
 
 
 @pytest.fixture
-def df_transformado(raw_readings_validos, lote_localidad_map):
-    """DataFrame ya transformado listo para cargar."""
-    from transformers.sensor_transformer import transform_readings
-    return transform_readings(raw_readings_validos, lote_localidad_map=lote_localidad_map)
-
-
-@pytest.fixture
-def mock_redis_state():
-    """Estado Redis completo (mock de MOCK_STATE en redis_extractor)."""
+def mock_realtime_state():
+    """Snapshot del estado caliente, equivalente al MOCK_STATE del extractor."""
     return {
         "sensor:1:humedad":     "62.3",
         "sensor:1:temperatura": "21.4",

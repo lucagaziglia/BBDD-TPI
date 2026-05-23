@@ -2,6 +2,31 @@
 
 Bienvenido al repositorio del Trabajo Práctico Final de la materia Bases de Datos (UNSAM).
 
+## Arquitectura de datos
+
+```
+              ┌──────────────────────┐
+   IoT  ─────►│ Cassandra (NoSQL)    │── sensor_readings   (histórico time-series)
+              │                      │── sensor_realtime   (estado caliente, TTL 1h)
+              │                      │── riego_estado      (control de actuadores, TTL 1h)
+              │                      │── alertas           (alertas efímeras, TTL 2h)
+              └──────────┬───────────┘
+                         │  ETL (Python)
+                         ▼
+              ┌──────────────────────┐
+              │ Supabase / Postgres  │── modelo dimensional (SQL DW)
+              └──────────────────────┘
+                         │
+                         ▼
+              ┌──────────────────────┐
+              │ Dashboard BI         │── Chart.js
+              └──────────────────────┘
+```
+
+> Cambió la capa NoSQL: antes teníamos **MongoDB + Redis**, ahora la
+> reemplazamos por **una única instancia de Cassandra** que cubre los dos casos
+> de uso. Detalles en [nosql/cassandra/README.md](nosql/cassandra/README.md).
+
 ## Setup e Instrucciones
 
 1. **Clonar repositorio e instalar dependencias:**
@@ -12,21 +37,41 @@ Bienvenido al repositorio del Trabajo Práctico Final de la materia Bases de Dat
    ```
 
 2. **Configuración de Variables de Entorno:**
-   Copia el archivo `.env.example` a `.env` y completa con las credenciales de los diferentes motores:
-   - Supabase (PostgreSQL)
-   - MongoDB Atlas
-   - Redis Cloud
+   Copiá `.env.example` a `.env` y completá con las credenciales:
+   - Supabase (PostgreSQL): `SUPABASE_URL`, `SUPABASE_ANON_KEY`
+   - Cassandra local: `CASSANDRA_HOSTS`, `CASSANDRA_PORT`, `CASSANDRA_KEYSPACE`
+   - O Astra DB: `ASTRA_DB_SECURE_BUNDLE_PATH`, `ASTRA_DB_CLIENT_ID`, `ASTRA_DB_CLIENT_SECRET`
    ```bash
    cp .env.example .env
    ```
 
-3. **Ejecutar el Pipeline:**
-   Puedes utilizar Claude Code con los comandos definidos en `.claude/commands/` o ejecutar directamente Python:
+3. **Levantar Cassandra (si vas con Docker local):**
+   ```bash
+   docker run -d --name cassandra-agtech -p 9042:9042 cassandra:5
+   # esperar ~30s a que termine de bootear
+   docker exec -i cassandra-agtech cqlsh < nosql/cassandra/schema.cql
+   python nosql/cassandra/seed_sensors.py
+   python nosql/cassandra/seed_realtime.py
+   ```
+
+4. **Ejecutar el Pipeline ETL:**
    ```bash
    python etl/pipeline.py
    ```
+   Si no hay Cassandra disponible, el pipeline cae a datos mock para que las
+   pruebas y la demo corran sin infra externa.
 
-Para más contexto y convenciones, lee el archivo `CLAUDE.md`.
+Para más contexto y convenciones, leé el archivo `CLAUDE.md`.
+
+## NoSQL — Estructura
+
+```
+nosql/cassandra/
+├── schema.cql        # DDL: keyspace + 4 tablas
+├── seed_sensors.py   # Carga ~18.000 lecturas históricas (25 lotes × 30 días × 24h)
+├── seed_realtime.py  # Carga snapshot real-time con TTL 1h
+└── README.md         # Diseño, decisiones y patrones de query
+```
 
 ## SQL — Orden de ejecución
 
