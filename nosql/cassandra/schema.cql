@@ -27,15 +27,19 @@
 
 
 -- ── Keyspace ────────────────────────────────────────────────────────────────
--- SimpleStrategy con RF=1 alcanza para entorno académico / single-node.
--- En producción se cambiaría por NetworkTopologyStrategy con RF=3 por DC.
-CREATE KEYSPACE IF NOT EXISTS agtech_nosql
+-- En Cassandra "vanilla" (Docker local) se crea acá. En Astra DB el keyspace
+-- se crea desde la UI (Database → Add Keyspace) — el comando CREATE KEYSPACE
+-- está bloqueado a nivel del cluster.
+--
+-- Para Astra: comentá el CREATE KEYSPACE y usá el keyspace ya existente.
+-- Para local: descomentalo si necesitás crearlo de cero.
+CREATE KEYSPACE IF NOT EXISTS agtech
 WITH REPLICATION = {
     'class': 'SimpleStrategy',
     'replication_factor': 1
 };
 
-USE agtech_nosql;
+USE agtech;
 
 
 -- ── 1. Histórico crudo de sensores (reemplaza MongoDB) ──────────────────────

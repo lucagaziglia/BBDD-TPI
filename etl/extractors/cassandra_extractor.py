@@ -42,7 +42,7 @@ def connect_cassandra():
     Prioriza Astra DB si `ASTRA_DB_SECURE_BUNDLE_PATH` está definido; caso
     contrario usa contact points locales vía `CASSANDRA_HOSTS`.
     """
-    keyspace = os.getenv("CASSANDRA_KEYSPACE", "agtech_nosql")
+    keyspace = os.getenv("CASSANDRA_KEYSPACE", "agtech")
 
     try:
         from cassandra.cluster import Cluster
@@ -125,10 +125,15 @@ def _generate_mock_readings(n_dias: int = 7) -> list[dict]:
     """
     Lecturas sintéticas con la misma estructura que devuelve la query a
     `sensor_readings` en Cassandra. Útil para tests y demo offline.
+
+    Las fechas se anclan a "ahora" (en lugar de una fecha fija) para que el
+    pipeline real, que filtra por `datetime.now() - N días`, siempre encuentre
+    datos en el rango pedido. Si las anclamos a una fecha fija (p. ej.
+    2025-06-28) y corremos el ETL meses después, el filtro deja todo afuera.
     """
     import random
     docs = []
-    ahora  = datetime(2025, 6, 28, 23, 0, 0)
+    ahora  = datetime.now().replace(minute=0, second=0, microsecond=0)
     inicio = ahora - timedelta(days=n_dias)
 
     for lote_id, tipo_suelo in _LOTE_TIPO_SUELO.items():
@@ -149,7 +154,7 @@ def _generate_mock_readings(n_dias: int = 7) -> list[dict]:
     return docs
 
 
-MOCK_READINGS: list[dict] = _generate_mock_readings(n_dias=7)
+MOCK_READINGS: list[dict] = _generate_mock_readings(n_dias=30)
 
 MOCK_STATE: dict[str, str] = {
     "sensor:1:humedad":     "62.3",
