@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AgroPampa S.A. | BI Dashboard</title>
+    
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- CSS Propio -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="dashboard-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="logo">
+                <h2>🌱 AgroPampa</h2>
+                <p>Datawarehouse BI</p>
+            </div>
+            <nav class="menu">
+                <ul>
+                    <li class="active">Resumen General</li>
+                    <li>Rendimientos</li>
+                    <li>Riesgos & IoT</li>
+                    <li>Exportar Reportes</li>
+                </ul>
+            </nav>
+            <div class="status-card">
+                <span class="status-dot"></span>
+                <p>Supabase Conectado</p>
+                <small>Último ETL: 10 min</small>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="topbar">
+                <h1>Panel de Inteligencia de Negocios</h1>
+                <div class="user-profile">
+                    <span>Admin Data</span>
+                    <div class="avatar">AD</div>
+                </div>
+            </header>
+
+            <!-- KPIs Row -->
+            <section class="kpi-row">
+                <div class="kpi-card glassmorphism">
+                    <h3>Producción Total 2024/25</h3>
+                    <div class="value">48,250 TN <span class="trend positive">↑ 14%</span></div>
+                    <p>vs campaña anterior (sequía)</p>
+                </div>
+                <div class="kpi-card glassmorphism highlight">
+                    <h3>Proyección 2025/26 (OLS)</h3>
+                    <div class="value">52,100 TN <span class="trend positive">Estimado</span></div>
+                    <p>Basado en humedad proyectada (Item 4)</p>
+                </div>
+                <div class="kpi-card glassmorphism">
+                    <h3>Superficie Activa</h3>
+                    <div class="value">14,200 HA</div>
+                    <p>En 25 lotes operativos</p>
+                </div>
+            </section>
+
+            <!-- Charts Grid -->
+            <section class="charts-grid">
+                <!-- Elemento 1: Evolución Rendimiento -->
+                <div class="chart-card glassmorphism">
+                    <div class="chart-header">
+                        <h3>1. Evolución del Rendimiento (kg/ha)</h3>
+                        <span class="badge">Línea Temporal</span>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="evolucionChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Elemento 2: Producción por Propietario -->
+                <div class="chart-card glassmorphism">
+                    <div class="chart-header">
+                        <h3>2. Producción por Propietario</h3>
+                        <span class="badge">Distribución</span>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="propietariosChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Elemento 3: Mapa de Calor / Dispersión -->
+                <div class="chart-card glassmorphism col-span-2">
+                    <div class="chart-header">
+                        <h3>3. Matriz Rendimiento vs. Riesgo (CV)</h3>
+                        <span class="badge">Minería NTILE</span>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="riesgoChart"></canvas>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Script de lógica e inicialización de gráficos -->
+    <script src="app.js"></script>
+</body>
+</html>
