@@ -25,7 +25,7 @@ load_dotenv(dotenv_path=env_path)
 from extractors.cassandra_extractor import (
     extract_sensor_readings,
     extract_realtime_state,
-    connect_cassandra,
+    connect_astradb,
 )
 from transformers.sensor_transformer import transform_readings
 from loaders.supabase_loader import load_to_mediciones_diarias
@@ -67,19 +67,16 @@ def run_pipeline(dias: int = 30) -> dict:
     hasta = datetime.now()
     desde = hasta - timedelta(days=dias)
 
-    # Una sola Session reusable para las dos extracciones — evita re-handshake.
-    cass_session = connect_cassandra()
-
     # 1. Extracción del histórico (reemplaza el viejo extract de MongoDB).
     logger.info("Fase 1a: Extracción del histórico desde Cassandra (sensor_readings)")
-    raw_readings = extract_sensor_readings(desde, hasta, session=cass_session)
+    raw_readings = extract_sensor_readings(desde, hasta)
     resultados["filas_extraidas"] = len(raw_readings)
 
     # 1b. Extracción del estado caliente (reemplaza el viejo extract de Redis).
     # Hoy el snapshot se loggea para visibilidad; queda disponible para que el
     # dashboard / sistema de alertas lo consuma sin pegarle al motor.
     logger.info("Fase 1b: Extracción del estado real-time desde Cassandra")
-    realtime_state = extract_realtime_state(session=cass_session)
+    realtime_state = extract_realtime_state()
     logger.info(f"Estado caliente: {len(realtime_state)} entradas activas.")
 
     # 2. Transformación
@@ -97,12 +94,6 @@ def run_pipeline(dias: int = 30) -> dict:
         resultados["filas_cargadas"] = cargadas
     else:
         logger.warning("No hay datos para cargar después de la transformación.")
-
-    if cass_session is not None:
-        try:
-            cass_session.shutdown()
-        except Exception:
-            pass
 
     fin = datetime.now()
     logger.info(f"=== Pipeline finalizado en {fin - inicio} ===")

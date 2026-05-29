@@ -1,25 +1,24 @@
 """
-Carga del "estado actual" de los sensores en Cassandra (tablas sensor_realtime
+Carga del "estado actual" de los sensores en Astra DB (colecciones sensor_realtime
 y riego_estado).
 
-Equivalente al viejo `nosql/redis/seed_realtime.py`. La diferencia clave es que
-ya NO usamos Redis: el TTL ahora lo provee Cassandra a nivel tabla
-(`default_time_to_live = 3600`).
+Estructura de documentos:
 
-¿POR QUÉ TTL?
-    Si un sensor falla y deja de reportar, la fila desaparece sola al cabo de
-    1 hora y el dashboard ve "Offline" en lugar de un valor congelado. Es el
-    mismo razonamiento que teníamos con `SETEX` en Redis — solo cambió el motor.
+sensor_realtime:
+    {
+        "lote_id": int,
+        "humedad": float,
+        "temperatura": float,
+        "updated_at": string (ISO 8601)
+    }
 
-COMPORTAMIENTO AL RE-EJECUTAR:
-    Cassandra hace UPSERT por defecto (INSERT == UPDATE sobre la PK). Cada vez
-    que corre este script se sobrescriben los valores y se reinicia el reloj
-    del TTL. Ideal para simular cambios de estado en vivo durante una demo.
-
-CAPAS DE DATOS (con la nueva arquitectura):
-    - Cassandra sensor_realtime / riego_estado : capa de velocidad (TTL 1h).
-    - Cassandra sensor_readings                : capa de persistencia cruda.
-    - Supabase (PostgreSQL)                    : capa analítica (datos diarios).
+riego_estado:
+    {
+        "lote_id": int,
+        "estado": "ON" | "OFF",
+        "motivo": string,
+        "updated_at": string (ISO 8601)
+    }
 
 Correr con:
     python nosql/cassandra/seed_realtime.py
@@ -33,14 +32,13 @@ from datetime import datetime
 from dotenv import load_dotenv
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-from etl.extractors.cassandra_extractor import connect_cassandra  # noqa: E402
+from etl.extractors.cassandra_extractor import connect_astradb  # noqa: E402
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
 
-# Humedad esperada según tipo de suelo (mismo modelo que el seed Redis original).
 HUMEDAD_BASE = {
     "Franco limoso":    66.0,
     "Franco arcilloso": 64.0,
@@ -81,22 +79,20 @@ UMBRAL_RIEGO = 45.0
 
 
 def run_seed() -> tuple[int, int]:
-    session = connect_cassandra()
-    if session is None:
-        logger.error("No se pudo conectar a Cassandra. Verificá las variables de entorno.")
+    realtime_coll = connect_astradb("sensor_realtime")
+    riego_coll = connect_astradb("riego_estado")
+    
+    if realtime_coll is None or riego_coll is None:
+        logger.error("No se pudo conectar a Astra DB. Verificá las variables de entorno.")
         sys.exit(1)
 
-    insert_realtime = session.prepare("""
-        INSERT INTO sensor_realtime (lote_id, humedad, temperatura, updated_at)
-        VALUES (?, ?, ?, ?)
-    """)
-    insert_riego = session.prepare("""
-        INSERT INTO riego_estado (lote_id, estado, motivo, updated_at)
-        VALUES (?, ?, ?, ?)
-    """)
+    # Limpiamos las colecciones
+    logger.info("Limpiando colecciones…")
+    realtime_coll.delete_many({})
+    riego_coll.delete_many({})
 
-    ahora = datetime.utcnow()
-    total_filas = 0
+    ahora = datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+    total_docs = 0
     riegos_on = 0
 
     for lote_id, _nombre, tipo_suelo in LOTES:
@@ -110,20 +106,42 @@ def run_seed() -> tuple[int, int]:
         if estado_riego == "ON":
             riegos_on += 1
 
-        session.execute(insert_realtime, (lote_id, humedad, temp, ahora))
-        session.execute(insert_riego,    (lote_id, estado_riego, motivo, ahora))
-        total_filas += 2
+        # Insertar en sensor_realtime
+        realtime_doc = {
+            "lote_id": lote_id,
+            "humedad": humedad,
+            "temperatura": temp,
+            "updated_at": ahora
+        }
+        try:
+            realtime_coll.insert_one(realtime_doc)
+            total_docs += 1
+        except Exception as e:
+            logger.error(f"Error insertando en sensor_realtime para lote {lote_id}: {e}")
+
+        # Insertar en riego_estado
+        riego_doc = {
+            "lote_id": lote_id,
+            "estado": estado_riego,
+            "motivo": motivo,
+            "updated_at": ahora
+        }
+        try:
+            riego_coll.insert_one(riego_doc)
+            total_docs += 1
+        except Exception as e:
+            logger.error(f"Error insertando en riego_estado para lote {lote_id}: {e}")
 
         logger.info(
             f"  lote_id={lote_id:2d} ({tipo_suelo}): "
             f"humedad={humedad}% temp={temp}°C → riego {estado_riego}"
         )
 
-    logger.info(f"Listo. {total_filas} filas cargadas, {riegos_on} riegos encendidos.")
-    logger.info("Tablas escritas: sensor_realtime | riego_estado (TTL 3600s)")
-    session.shutdown()
-    return total_filas, riegos_on
+    logger.info(f"Listo. {total_docs} documentos cargados, {riegos_on} riegos encendidos.")
+    logger.info("Colecciones escritas: sensor_realtime | riego_estado")
+    return total_docs, riegos_on
 
 
 if __name__ == "__main__":
     run_seed()
+

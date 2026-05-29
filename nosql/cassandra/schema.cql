@@ -31,15 +31,15 @@
 -- se crea desde la UI (Database → Add Keyspace) — el comando CREATE KEYSPACE
 -- está bloqueado a nivel del cluster.
 --
--- Para Astra: comentá el CREATE KEYSPACE y usá el keyspace ya existente.
--- Para local: descomentalo si necesitás crearlo de cero.
-CREATE KEYSPACE IF NOT EXISTS agtech
-WITH REPLICATION = {
-    'class': 'SimpleStrategy',
-    'replication_factor': 1
-};
+-- Para Astra: el keyspace 'default' ya existe, solo lo usamos.
+-- Para local: descomenta CREATE KEYSPACE si necesitás crearlo de cero.
+-- CREATE KEYSPACE IF NOT EXISTS agtech
+-- WITH REPLICATION = {
+--     'class': 'SimpleStrategy',
+--     'replication_factor': 1
+-- };
 
-USE agtech;
+-- En Astra DB usamos las tablas con keyspace explícito: default_keyspace.tabla_name
 
 
 -- ── 1. Histórico crudo de sensores (reemplaza MongoDB) ──────────────────────
@@ -51,7 +51,7 @@ USE agtech;
 -- Las cuatro métricas (temp, humedad_suelo, precipitacion, agua) se guardan
 -- en columnas separadas porque siempre se leen juntas en cada lectura horaria.
 -- Esto es equivalente al documento que Mongo guardaba en `sensor_readings`.
-CREATE TABLE IF NOT EXISTS sensor_readings (
+CREATE TABLE IF NOT EXISTS default_keyspace.sensor_readings (
     lote_id        int,
     timestamp      timestamp,
     temp           double,
@@ -73,7 +73,7 @@ CREATE TABLE IF NOT EXISTS sensor_readings (
 -- Como Cassandra hace UPSERT por defecto (INSERT == UPDATE sobre la PK), re-
 -- ejecutar la carga simplemente sobrescribe el valor y reinicia el TTL,
 -- mismo comportamiento que el `SET ex=3600` de Redis.
-CREATE TABLE IF NOT EXISTS sensor_realtime (
+CREATE TABLE IF NOT EXISTS default_keyspace.sensor_realtime (
     lote_id      int PRIMARY KEY,
     humedad      double,
     temperatura  double,
@@ -88,7 +88,7 @@ CREATE TABLE IF NOT EXISTS sensor_realtime (
 -- abrir o cerrar la canilla. Conviene tenerlo separado de `sensor_realtime`
 -- porque tiene cadencia distinta (cambia menos seguido) y consumidores
 -- distintos (controlador de actuadores vs. dashboard).
-CREATE TABLE IF NOT EXISTS riego_estado (
+CREATE TABLE IF NOT EXISTS default_keyspace.riego_estado (
     lote_id      int PRIMARY KEY,
     estado       text,       -- 'ON' | 'OFF'
     motivo       text,       -- por qué se activó/desactivó (humedad baja, manual, etc.)
@@ -102,7 +102,7 @@ CREATE TABLE IF NOT EXISTS riego_estado (
 -- Particionamos por lote_id para que el dashboard pueda traerse las alertas
 -- de un lote con un solo seek a disco. TTL 2h porque las alertas son más
 -- "longevas" que un valor de sensor pero igual deben caducar.
-CREATE TABLE IF NOT EXISTS alertas (
+CREATE TABLE IF NOT EXISTS default_keyspace.alertas (
     lote_id    int,
     timestamp  timestamp,
     tipo       text,

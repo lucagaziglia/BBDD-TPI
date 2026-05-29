@@ -2,13 +2,13 @@
 cassandra_extractor.py — Extractor unificado de la capa NoSQL.
 
 Reemplaza a `mongodb_extractor` (histórico) y `redis_extractor` (estado real-time).
-Ahora ambos viven en Cassandra, en tablas separadas del mismo keyspace.
+Ahora ambos viven en Astra DB (Cassandra), en tablas separadas del mismo keyspace.
+
+Usa AstrayPy (Data API REST) — no requiere Secure Connect Bundle, solo token + URL.
 
 Tres responsabilidades:
 
-  1) `connect_cassandra()`     → factory de Session reusada por seeds y ETL.
-                                  Soporta Cassandra local (CASSANDRA_HOSTS) y
-                                  Astra DB (ASTRA_DB_SECURE_BUNDLE_PATH).
+  1) `connect_astradb()`      → factory que devuelve colección Astra DB (AstrayPy).
 
   2) `extract_sensor_readings(desde, hasta)` → reemplaza al extractor Mongo.
                                   Devuelve la misma lista de dicts que antes
@@ -18,9 +18,9 @@ Tres responsabilidades:
                                   dict con el mismo formato `sensor:{id}:tipo`
                                   para no romper consumidores existentes.
 
-Si no hay conexión disponible (sin Cassandra ni Astra configurados, o si la
-conexión falla), las dos funciones de extracción caen a datos mock para
-permitir correr el pipeline sin depender de infraestructura externa.
+Si no hay conexión disponible (sin Astra configurado o si la conexión falla),
+las dos funciones de extracción caen a datos mock para permitir correr el
+pipeline sin depender de infraestructura externa.
 """
 import os
 import logging
@@ -31,66 +31,45 @@ logger = logging.getLogger(__name__)
 
 
 # ────────────────────────────────────────────────────────────────────────────
-# Conexión
+# Conexión a Astra DB vía AstrayPy (Data API REST)
 # ────────────────────────────────────────────────────────────────────────────
 
-def connect_cassandra():
+def connect_astradb(collection_name: str = "sensor_readings"):
     """
-    Devuelve una `cassandra.cluster.Session` lista para usar o `None` si no
-    hay configuración / la conexión falla.
-
-    Prioriza Astra DB si `ASTRA_DB_SECURE_BUNDLE_PATH` está definido; caso
-    contrario usa contact points locales vía `CASSANDRA_HOSTS`.
+    Conecta a Astra DB usando AstrayPy (Data API REST).
+    
+    Requiere en .env:
+    - ASTRA_DB_URL: https://...apps.astra.datastax.com
+    - ASTRA_DB_TOKEN: AstraCS:CLIENT_ID:CLIENT_SECRET
+    - CASSANDRA_KEYSPACE: nombre del keyspace
+    
+    No requiere Secure Connect Bundle.
     """
-    keyspace = os.getenv("CASSANDRA_KEYSPACE", "agtech")
-
     try:
-        from cassandra.cluster import Cluster
-        from cassandra.auth import PlainTextAuthProvider
+        from astrapy import DataAPIClient
     except ImportError:
-        logger.warning("cassandra-driver no instalado — instalalo con `pip install cassandra-driver`.")
+        logger.warning("astrapy no instalado — instalalo con `pip install astrapy`.")
         return None
-
-    # ── Astra DB ────────────────────────────────────────────────────────────
-    bundle = os.getenv("ASTRA_DB_SECURE_BUNDLE_PATH")
-    if bundle:
-        client_id     = os.getenv("ASTRA_DB_CLIENT_ID")
-        client_secret = os.getenv("ASTRA_DB_CLIENT_SECRET")
-        if not (client_id and client_secret):
-            logger.warning("ASTRA_DB_SECURE_BUNDLE_PATH definido pero falta CLIENT_ID/SECRET.")
-            return None
-        try:
-            cluster = Cluster(
-                cloud={"secure_connect_bundle": bundle},
-                auth_provider=PlainTextAuthProvider(client_id, client_secret),
-            )
-            session = cluster.connect(keyspace)
-            logger.info(f"Conectado a Astra DB (keyspace={keyspace}).")
-            return session
-        except Exception as e:
-            logger.warning(f"Astra DB no disponible ({type(e).__name__}: {e}).")
-            return None
-
-    # ── Cassandra local / cluster propio ────────────────────────────────────
-    hosts_env = os.getenv("CASSANDRA_HOSTS")
-    if not hosts_env:
-        logger.info("CASSANDRA_HOSTS no configurado — saltando conexión.")
+    
+    url = os.getenv("ASTRA_DB_URL")
+    token = os.getenv("ASTRA_DB_TOKEN")
+    keyspace = os.getenv("CASSANDRA_KEYSPACE", "default_keyspace")
+    
+    if not (url and token):
+        logger.warning(
+            "ASTRA_DB_URL o ASTRA_DB_TOKEN no configurados en .env. "
+            "Obtén estos valores de: https://astra.datastax.com/ → Database → Connect"
+        )
         return None
-
-    hosts = [h.strip() for h in hosts_env.split(",") if h.strip()]
-    port  = int(os.getenv("CASSANDRA_PORT", "9042"))
-    user  = os.getenv("CASSANDRA_USERNAME")
-    pwd   = os.getenv("CASSANDRA_PASSWORD")
-
-    auth = PlainTextAuthProvider(user, pwd) if user and pwd else None
-
+    
     try:
-        cluster = Cluster(contact_points=hosts, port=port, auth_provider=auth)
-        session = cluster.connect(keyspace)
-        logger.info(f"Conectado a Cassandra ({hosts}:{port}, keyspace={keyspace}).")
-        return session
+        client = DataAPIClient(token=token)
+        db = client.get_database(url, keyspace=keyspace)
+        collection = db.get_collection(collection_name)
+        logger.info(f"Conectado a Astra DB (colección={collection_name}).")
+        return collection
     except Exception as e:
-        logger.warning(f"Cassandra no disponible ({type(e).__name__}: {e}).")
+        logger.warning(f"Astra DB no disponible ({type(e).__name__}: {e}).")
         return None
 
 
@@ -173,111 +152,104 @@ MOCK_STATE: dict[str, str] = {
 # Extractores
 # ────────────────────────────────────────────────────────────────────────────
 
-def extract_sensor_readings(desde: datetime, hasta: datetime, session=None) -> list[dict]:
+def extract_sensor_readings(desde: datetime, hasta: datetime) -> list[dict]:
     """
     Extrae las lecturas crudas de `sensor_readings` entre `desde` y `hasta`.
-
-    Cassandra requiere filtrar por la partición (`lote_id`), así que iteramos
-    sobre los 25 lotes haciendo una slice query por lote. Cada slice es
-    eficiente porque las filas están clusterizadas por `timestamp DESC`.
 
     Devuelve la misma estructura que el viejo extractor Mongo:
         [{"lote_id": int, "timestamp": dt, "temp": float,
           "humedad_suelo": float, "precipitacion": float, "agua": float}, …]
     """
-    own_session = False
-    if session is None:
-        session = connect_cassandra()
-        own_session = True
-
-    if session is None:
-        logger.warning("Cassandra no disponible — usando datos mock para testing.")
+    collection = connect_astradb("sensor_readings")
+    
+    if collection is None:
+        logger.warning("Astra DB no disponible — usando datos mock para testing.")
         return _filter_by_date(MOCK_READINGS, desde, hasta)
-
+    
     try:
-        # PreparedStatement reutilizable: una sola compilación, N ejecuciones.
-        stmt = session.prepare("""
-            SELECT lote_id, timestamp, temp, humedad_suelo, precipitacion, agua
-            FROM sensor_readings
-            WHERE lote_id = ? AND timestamp >= ? AND timestamp <= ?
-        """)
-
-        logger.info(f"Extrayendo de Cassandra: {desde} → {hasta}")
-        readings: list[dict] = []
-
-        # Iteramos sobre los lotes conocidos. Si en el futuro queremos descubrirlos
-        # dinámicamente, conviene materializar una tabla `lotes_activos` para no
-        # depender de un full-scan de `sensor_readings`.
-        for lote_id in _LOTE_TIPO_SUELO.keys():
-            rows = session.execute(stmt, (lote_id, desde, hasta))
-            for row in rows:
-                readings.append({
-                    "lote_id":       row.lote_id,
-                    "timestamp":     row.timestamp,
-                    "temp":          row.temp,
-                    "humedad_suelo": row.humedad_suelo,
-                    "precipitacion": row.precipitacion,
-                    "agua":          row.agua,
-                })
-
-        logger.info(f"Extraídas {len(readings)} filas desde sensor_readings.")
+        logger.info(f"Extrayendo de Astra DB: {desde} → {hasta}")
+        
+        # Convertir timestamps a ISO 8601 string sin microsegundos + Z
+        desde_iso = desde.replace(microsecond=0).isoformat() + "Z"
+        hasta_iso = hasta.replace(microsecond=0).isoformat() + "Z"
+        
+        # Query con filtro de rango de timestamps (como strings ISO)
+        results = collection.find({
+            "timestamp": {
+                "$gte": desde_iso,
+                "$lte": hasta_iso
+            }
+        })
+        
+        readings = []
+        for doc in results:
+            # Remover _id de MongoDB/AstrayPy
+            if "_id" in doc:
+                doc.pop("_id")
+            # Convertir timestamp string back to datetime si es necesario
+            if isinstance(doc.get("timestamp"), str):
+                doc["timestamp"] = datetime.fromisoformat(doc["timestamp"].replace("Z", "+00:00"))
+            readings.append(doc)
+        
+        logger.info(f"Extraídas {len(readings)} filas desde Astra DB.")
         return readings
-
+    
     except Exception as e:
-        logger.warning(f"Error consultando Cassandra ({type(e).__name__}: {e}). Cayendo a mock.")
+        logger.warning(f"Error extrayendo de Astra DB ({type(e).__name__}: {e}). Cayendo a mock.")
         return _filter_by_date(MOCK_READINGS, desde, hasta)
-    finally:
-        if own_session and session is not None:
-            try:
-                session.shutdown()
-            except Exception:
-                pass
 
 
-def extract_realtime_state(session=None) -> dict[str, str]:
+def extract_realtime_state() -> dict[str, str]:
     """
     Extrae el snapshot caliente de `sensor_realtime` + `riego_estado`.
 
     Para preservar la API del consumidor anterior (que recibía un dict con
-    claves estilo `sensor:{id}:humedad`), aplastamos las dos tablas en ese
+    claves estilo `sensor:{id}:humedad`), aplastamos las dos colecciones en ese
     mismo formato. Así no hay que tocar nada río abajo.
     """
-    own_session = False
-    if session is None:
-        session = connect_cassandra()
-        own_session = True
-
-    if session is None:
-        logger.warning("Cassandra no disponible — usando datos mock para testing.")
+    collection = connect_astradb("sensor_realtime")
+    
+    if collection is None:
+        logger.warning("Astra DB no disponible — usando datos mock para testing.")
         return dict(MOCK_STATE)
-
+    
     try:
         state: dict[str, str] = {}
-
-        # Estos son full-scans de la tabla, pero las tablas son muy chicas
-        # (≤ 25 filas) por diseño: una fila por lote. Es O(N_lotes).
-        for row in session.execute("SELECT lote_id, humedad, temperatura FROM sensor_realtime"):
-            if row.humedad is not None:
-                state[f"sensor:{row.lote_id}:humedad"]     = str(row.humedad)
-            if row.temperatura is not None:
-                state[f"sensor:{row.lote_id}:temperatura"] = str(row.temperatura)
-
-        for row in session.execute("SELECT lote_id, estado FROM riego_estado"):
-            if row.estado is not None:
-                state[f"riego:{row.lote_id}:estado"] = row.estado
-
-        logger.info(f"Extraídas {len(state)} entradas de estado caliente desde Cassandra.")
+        
+        # Extraer datos de sensor_realtime
+        try:
+            realtime_docs = collection.find({})
+            for doc in realtime_docs:
+                lote_id = doc.get("lote_id")
+                humedad = doc.get("humedad")
+                temperatura = doc.get("temperatura")
+                
+                if lote_id and humedad is not None:
+                    state[f"sensor:{lote_id}:humedad"] = str(humedad)
+                if lote_id and temperatura is not None:
+                    state[f"sensor:{lote_id}:temperatura"] = str(temperatura)
+        except Exception as e:
+            logger.warning(f"Error extrayendo sensor_realtime: {e}")
+        
+        # Extraer datos de riego_estado
+        try:
+            riego_collection = connect_astradb("riego_estado")
+            if riego_collection:
+                riego_docs = riego_collection.find({})
+                for doc in riego_docs:
+                    lote_id = doc.get("lote_id")
+                    estado = doc.get("estado")
+                    if lote_id and estado:
+                        state[f"riego:{lote_id}:estado"] = estado
+        except Exception as e:
+            logger.warning(f"Error extrayendo riego_estado: {e}")
+        
+        logger.info(f"Extraídas {len(state)} entradas de estado real-time.")
         return state
-
+    
     except Exception as e:
-        logger.error(f"Error extrayendo estado real-time de Cassandra: {e}")
+        logger.error(f"Error extrayendo estado real-time: {e}")
         return {}
-    finally:
-        if own_session and session is not None:
-            try:
-                session.shutdown()
-            except Exception:
-                pass
 
 
 # ────────────────────────────────────────────────────────────────────────────
