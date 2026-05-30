@@ -4,8 +4,8 @@ supabase==2.30.0
 httpx==0.27.2
 sqlalchemy==2.0.25
 
-# Cassandra (reemplaza MongoDB + Redis)
-cassandra-driver==3.29.1
+# Astra DB / Cassandra (Data API REST)
+astrapy==1.1.0
 
 # ETL y transformaciones
 pandas==2.2.0
