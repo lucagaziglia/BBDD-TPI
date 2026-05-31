@@ -9,7 +9,6 @@ from datetime import datetime
 
 import pytest
 
-# ── Path fix: permite importar los módulos del proyecto ──────────────────────
 # Agrega la raíz del repo y el directorio etl/ al sys.path
 ROOT = os.path.dirname(os.path.dirname(__file__))
 ETL_DIR = os.path.join(ROOT, "etl")
@@ -18,14 +17,13 @@ sys.path.insert(0, ETL_DIR)
 
 
 # ────────────────────────────────────────────────────────────────────────────
-# Fixtures: datos crudos de Cassandra (mock)
+# Fixtures: datos crudos de Cassandra para las pruebas
 # ────────────────────────────────────────────────────────────────────────────
 
 @pytest.fixture
 def raw_readings_validos():
     """
     Lecturas crudas con la misma estructura que devuelve `cassandra_extractor`
-    (antes era el formato de MongoDB; el contrato del transformer no cambió).
     """
     return [
         {"lote_id": 1, "timestamp": datetime(2024, 11, 3, 8,  0),
@@ -41,7 +39,7 @@ def raw_readings_validos():
 
 @pytest.fixture
 def lote_localidad_map():
-    """Mapeo lote_id → localidad_id de ejemplo (legacy, usado por algunos tests)."""
+    """Mapeo lote_id → localidad_id de ejemplo (quedo de antes, usado por algunos tests)."""
     return {1: 10, 2: 11, 3: 12}
 
 
