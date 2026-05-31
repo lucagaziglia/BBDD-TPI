@@ -1,13 +1,6 @@
 """
-Pipeline ETL: Cassandra (histórico + real-time) → Transform → Supabase (DW).
+Pipeline ETL: Cassandra → Extract →  Transform → Load → Supabase.
 
-Cambios respecto a la versión anterior:
-  - La extracción ya NO consulta MongoDB ni Redis. Ambos casos de uso (histórico
-    crudo y estado caliente con TTL) viven ahora en Cassandra y se acceden vía
-    `etl/extractors/cassandra_extractor.py`.
-  - La interfaz pública (`run_pipeline`) y el contrato del transformer / loader
-    no cambian, así que los consumidores río abajo (dashboard, tests de
-    integración) no se enteran del swap de motor.
 """
 import sys
 import os
@@ -67,28 +60,27 @@ def run_pipeline(dias: int = 30) -> dict:
     hasta = datetime.now()
     desde = hasta - timedelta(days=dias)
 
-    # 1. Extracción del histórico (reemplaza el viejo extract de MongoDB).
-    logger.info("Fase 1a: Extracción del histórico desde Cassandra (sensor_readings)")
+    # EXTRACCION histórico
+    logger.info("EXTRACCIÓN del histórico de Cassandra")
     raw_readings = extract_sensor_readings(desde, hasta)
     resultados["filas_extraidas"] = len(raw_readings)
 
-    # 1b. Extracción del estado caliente (reemplaza el viejo extract de Redis).
-    # Hoy el snapshot se loggea para visibilidad; queda disponible para que el
-    # dashboard / sistema de alertas lo consuma sin pegarle al motor.
-    logger.info("Fase 1b: Extracción del estado real-time desde Cassandra")
+
+    logger.info("EXTRACCIÓN del real-time de Cassandra")
     realtime_state = extract_realtime_state()
     logger.info(f"Estado caliente: {len(realtime_state)} entradas activas.")
 
-    # 2. Transformación
-    logger.info("Fase 2: Transformación y agregación")
+    # TRANSFORMACION
+
+    logger.info("TRANSFORMACION")
     df_transformado = transform_readings(
         raw_data=raw_readings,
         lotes_activos=lotes_activos
     )
     resultados["filas_transformadas"] = len(df_transformado)
 
-    # 3. Carga al datawarehouse
-    logger.info("Fase 3: Carga en el Datawarehouse")
+    #CARGA
+    logger.info("CARGA")
     if not df_transformado.empty:
         cargadas = load_to_mediciones_diarias(df_transformado)
         resultados["filas_cargadas"] = cargadas

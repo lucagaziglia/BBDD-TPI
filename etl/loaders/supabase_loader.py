@@ -25,7 +25,7 @@ def load_to_mediciones_diarias(df: pd.DataFrame) -> int:
     records = df.to_dict(orient="records")
 
     try:
-        # El UPSERT ahora usa lote_id y fecha como clave de conflicto
+        # UPSERT con lote_id y fecha 
         response = supabase.table("dim_mediciones_diarias").upsert(
             records, on_conflict="lote_id, fecha"
         ).execute()

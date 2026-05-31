@@ -1,8 +1,7 @@
 """
-Carga del histórico crudo de lecturas IoT en Astra DB (colección sensor_readings).
+histórico
 
-Genera ~18.000 documentos (25 lotes × 30 días × 24 lecturas/día) simulando una
-lectura por hora ininterrumpida durante 30 días.
+documentos (25 lotes × cantida de días × 24 lecturas/día) una lectura porhora
 
 Estructura de documento:
     {
@@ -22,7 +21,6 @@ import sys
 import random
 import logging
 from datetime import datetime, timedelta
-
 from dotenv import load_dotenv
 
 # Permite importar el helper de conexión desde el extractor
@@ -35,14 +33,6 @@ logger = logging.getLogger(__name__)
 
 # 25 lotes
 LOTES = list(range(1, 26))
-
-
-import os
-import sys
-import random
-import logging
-from datetime import datetime, timedelta
-from dotenv import load_dotenv
 
 # Permite importar el helper de conexión desde el extractor
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
@@ -186,7 +176,7 @@ def generate_iot_data(days: int = 30, batch_size: int = 100):
 
         logger.info(f"  lote_id={lote_id:2d}: insertadas {len(lecturas_lote)} lecturas ({tipo_suelo})")
 
-    logger.info(f"¡Listo! Proceso terminado con éxito. {total_insertado} documentos guardados.")
+    logger.info(f"Exito. {total_insertado} documentos guardados.")
 
 
 if __name__ == "__main__":

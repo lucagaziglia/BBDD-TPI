@@ -1,9 +1,5 @@
 """
-Carga del "estado actual" de los sensores en Astra DB (colecciones sensor_realtime
-y riego_estado).
-
-Estructura de documentos:
-
+Estructura:
 sensor_realtime:
     {
         "lote_id": int,
@@ -20,7 +16,6 @@ riego_estado:
         "updated_at": string (ISO 8601)
     }
 
-Correr con:
     python nosql/cassandra/seed_realtime.py
 """
 import os

@@ -1,7 +1,7 @@
 """
 test_cassandra_extractor.py — Tests del extractor unificado de Astra DB.
 
-Cubre la extracción de datos desde Astra DB (managed Cassandra) mediante AstrayPy Data API.
+Cubre la extracción de datos desde Astra DB (Cassandra) mediante AstrayPy Data API.
 Verifica:
   - Fallback a datos mock cuando no hay Astra DB configurado
   - Estructura de las lecturas históricas (sensor_readings)

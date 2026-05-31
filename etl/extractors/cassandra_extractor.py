@@ -37,19 +37,9 @@ logger = logging.getLogger(__name__)
 def connect_astradb(collection_name: str = "sensor_readings"):
     """
     Conecta a Astra DB usando AstrayPy (Data API REST).
-    
-    Requiere en .env:
-    - ASTRA_DB_URL: https://...apps.astra.datastax.com
-    - ASTRA_DB_TOKEN: AstraCS:CLIENT_ID:CLIENT_SECRET
-    - CASSANDRA_KEYSPACE: nombre del keyspace
-    
-    No requiere Secure Connect Bundle.
     """
-    try:
-        from astrapy import DataAPIClient
-    except ImportError:
-        logger.warning("astrapy no instalado — instalalo con `pip install astrapy`.")
-        return None
+    from astrapy import DataAPIClient
+
     
     url = os.getenv("ASTRA_DB_URL")
     token = os.getenv("ASTRA_DB_TOKEN")
@@ -58,7 +48,6 @@ def connect_astradb(collection_name: str = "sensor_readings"):
     if not (url and token):
         logger.warning(
             "ASTRA_DB_URL o ASTRA_DB_TOKEN no configurados en .env. "
-            "Obtén estos valores de: https://astra.datastax.com/ → Database → Connect"
         )
         return None
     
@@ -154,9 +143,9 @@ MOCK_STATE: dict[str, str] = {
 
 def extract_sensor_readings(desde: datetime, hasta: datetime) -> list[dict]:
     """
-    Extrae las lecturas crudas de `sensor_readings` entre `desde` y `hasta`.
+    Extrae las lecturas crudas de sensor_readings entre desde y hasta
 
-    Devuelve la misma estructura que el viejo extractor Mongo:
+    estructura:
         [{"lote_id": int, "timestamp": dt, "temp": float,
           "humedad_suelo": float, "precipitacion": float, "agua": float}, …]
     """
@@ -169,7 +158,7 @@ def extract_sensor_readings(desde: datetime, hasta: datetime) -> list[dict]:
     try:
         logger.info(f"Extrayendo de Astra DB: {desde} → {hasta}")
         
-        # Convertir timestamps a ISO 8601 string sin microsegundos + Z
+        # timestamps a ISO 8601 string sin microsegundos + Z
         desde_iso = desde.replace(microsecond=0).isoformat() + "Z"
         hasta_iso = hasta.replace(microsecond=0).isoformat() + "Z"
         
@@ -183,7 +172,7 @@ def extract_sensor_readings(desde: datetime, hasta: datetime) -> list[dict]:
         
         readings = []
         for doc in results:
-            # Remover _id de MongoDB/AstrayPy
+            # Rquitamos id de la base
             if "_id" in doc:
                 doc.pop("_id")
             # Convertir timestamp string back to datetime si es necesario
@@ -201,11 +190,10 @@ def extract_sensor_readings(desde: datetime, hasta: datetime) -> list[dict]:
 
 def extract_realtime_state() -> dict[str, str]:
     """
-    Extrae el snapshot caliente de `sensor_realtime` + `riego_estado`.
+    Extrae sensor_realtime y riego_estado.
 
     Para preservar la API del consumidor anterior (que recibía un dict con
-    claves estilo `sensor:{id}:humedad`), aplastamos las dos colecciones en ese
-    mismo formato. Así no hay que tocar nada río abajo.
+    claves estilo `sensor:{id}:humedad`), aplastamos las dos colecciones en ese mismo formato
     """
     collection = connect_astradb("sensor_realtime")
     
@@ -216,7 +204,7 @@ def extract_realtime_state() -> dict[str, str]:
     try:
         state: dict[str, str] = {}
         
-        # Extraer datos de sensor_realtime
+        # datos de sensor_realtime
         try:
             realtime_docs = collection.find({})
             for doc in realtime_docs:
@@ -231,7 +219,7 @@ def extract_realtime_state() -> dict[str, str]:
         except Exception as e:
             logger.warning(f"Error extrayendo sensor_realtime: {e}")
         
-        # Extraer datos de riego_estado
+        # Datos de riego_estado
         try:
             riego_collection = connect_astradb("riego_estado")
             if riego_collection:
@@ -252,9 +240,7 @@ def extract_realtime_state() -> dict[str, str]:
         return {}
 
 
-# ────────────────────────────────────────────────────────────────────────────
-# Helpers internos
-# ────────────────────────────────────────────────────────────────────────────
+#Helpers
 
 def _filter_by_date(docs: list[dict], desde: datetime, hasta: datetime) -> list[dict]:
     """Filtra los mock readings por rango de fechas para imitar la slice query."""
